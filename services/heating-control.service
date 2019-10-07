@@ -1,0 +1,14 @@
+[Unit]
+Description=Heating control daemon
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=5
+User=$USER
+ExecStart=$BIN_PATH --config $CONFIG_PATH
+
+[Install]
+WantedBy=multi-user.target
