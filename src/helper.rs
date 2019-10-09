@@ -174,7 +174,7 @@ pub fn print_info(states: &States)
 {
     for (node, state) in states {
         for (pin, col) in state {
-            debug!("Node: {} Pin: {} Collection: {:?}", node, pin, col);//col.get_last_changed_value(), col.get_last_changed_dt());
+            debug!("Node: {} Pin: {} Collection: {:?} {:?}", node, pin, col.get_last_changed_value(), col.get_last_changed_dt());
         }
     }
 }

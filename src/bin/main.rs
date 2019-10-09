@@ -14,7 +14,6 @@ use std::io::{Error, ErrorKind};
 use std::time::Duration;
 use std::thread;
 use std::cell::RefCell;
-use std::sync::{Arc};
 use clap::{App};
 use env_logger::Env;
 use log::{debug, warn};
@@ -44,11 +43,12 @@ fn main() -> Result<(), Error>
 
     let (config, control_nodes) = load_config(config_path, verbosity)?;
 
-    let state_ref = RefCell::new(States::new());
+    let states = RefCell::new(States::new());
 
-    let client = Arc::new(Mosquitto::new(&config.name));
+    let client = Mosquitto::new(&format!("{}-main", config.name));
     client.connect(&config.host, 1883)
-        .map_err(|_| Error::new(ErrorKind::NotConnected, format!("Unable to connect to host: {}", config.host)))?;
+        .map_err(|e| Error::new(ErrorKind::NotConnected, format!("Unable to connect to host: {} {}", config.host, e)))?;
+
 
     /*
      * receive remote on :
@@ -61,15 +61,16 @@ fn main() -> Result<(), Error>
 
     let remote_channel = client.subscribe(&remote_set, 0)
         .map(|a| { info!("Listening to: {}", remote_set); a })
-        .map_err(|_| Error::new(ErrorKind::NotConnected, format!("Unable to subscribe: {}", remote_set)))?;
+        .map_err(|e| Error::new(ErrorKind::NotConnected, format!("Unable to subscribe: {} {:?}", remote_set, e)))?;
     let local_channel = client.subscribe(&local_set, 0)
         .map(|a| { info!("Listening to: {}", local_set); a })
-        .map_err(|_| Error::new(ErrorKind::NotConnected, format!("Unable to subscribe: {}", local_set)))?;
+        .map_err(|e| Error::new(ErrorKind::NotConnected, format!("Unable to subscribe: {} {:?}", local_set, e)))?;
 
-    let mut mc = client.callbacks(());
-    mc.on_message(|_,msg| {
 
-        debug!("Message received: {:?}", msg);
+    let mut m = client.callbacks(());
+    m.on_message(|_,msg| {
+
+        //debug!("Message received: {:?} {}", msg, msg.text());
 
         let op = PinOperation::from_message(&msg);
         if !op.is_ok() {
@@ -79,10 +80,14 @@ fn main() -> Result<(), Error>
         }
         let op = op.unwrap();
 
-        if state_ref.borrow().contains_key(&op.node) {
-            let result = state_ref.borrow_mut().get_mut(&op.node).map(|hmap| {
+        if states.borrow().contains_key(&op.node) {
+            let result = states.borrow_mut().get_mut(&op.node).map(|hmap| {
                 hmap.get_mut(&op.pin_state.pin).map(|col| {
                     col.push(&op.pin_state);
+                }).unwrap_or_else(|| {
+                    let mut arr = PinCollection::new();
+                    arr.push(&op.pin_state.clone());
+                    hmap.insert(op.pin_state.pin, arr);
                 });
             });
             if !result.is_some() {
@@ -93,23 +98,26 @@ fn main() -> Result<(), Error>
             let mut arr = PinCollection::new();
             arr.push(&op.pin_state.clone());
             col.insert(op.pin_state.pin, arr);
-            state_ref.borrow_mut().insert(op.node, col);
+            states.borrow_mut().insert(op.node, col);
         }
     });
 
-    let tclient = client.clone();
-    let mosquitto_thread = thread::spawn(move || {
-        tclient.loop_until_disconnect(-1);
-        debug!("Client disconnected");
-    });
     loop {
-        let count = apply_heating(&client, &control_nodes, &state_ref.borrow(), &config);
+        let count = apply_heating(&client, &control_nodes, &states.borrow(), &config);
         if count > 0 {
             info!("States expected to change: {}", count);
         }
 
-        print_info(&state_ref.borrow());
+        print_info(&states.borrow());
 
-        thread::sleep(Duration::from_millis(10000));
+        for i in 0..20 {
+            let conn_result = client.do_loop(-1)
+                .map_err(|e| Error::new(ErrorKind::NotConnected, format!("Mqtt error {}", e)));
+            if !conn_result.is_ok() {
+                client.reconnect()
+                    .map_err(|e| Error::new(ErrorKind::NotConnected, format!("Mqtt can not reconnect {}", e)))?;
+            }
+            thread::sleep(Duration::from_millis(500));
+        }
     }
 }
