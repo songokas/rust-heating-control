@@ -8,60 +8,45 @@ extern crate clap;
 extern crate log;
 
 use std::collections::{HashMap};
-use std::fs::File;
-use std::io::Read;
-use yaml_rust::{YamlLoader};
+
 use mosquitto_client::{Mosquitto};
 use std::io::{Error, ErrorKind};
 use std::time::Duration;
 use std::thread;
 use std::cell::RefCell;
+use std::sync::{Arc};
 use clap::{App};
 use env_logger::Env;
+use log::{debug, warn};
 
-use log::{debug, warn, error};
-
+#[path = "../config.rs"]
 pub mod config;
+#[path = "../helper.rs"]
 pub mod helper;
+#[path = "../zone.rs"]
 pub mod zone;
 
-use crate::config::{Config, States};
-use crate::helper::{create_nodes, print_info, apply_heating};
+use crate::config::{States};
+use crate::helper::{print_info, apply_heating, load_config};
 use arduino_mqtt_pin::pin::{PinOperation, PinCollection};
 
 fn main() -> Result<(), Error>
 {
 
-    let yaml = load_yaml!("cli.yml");
+    let yaml = load_yaml!("../cli.yml");
     let matches = App::from_yaml(yaml).get_matches();
-    let config = matches.value_of("config").unwrap_or("config.conf");
-    let verbosity = matches.occurrences_of("verbose");
+    let config_path = matches.value_of("config").unwrap_or("config.conf");
+    let verbosity: u8 = matches.occurrences_of("verbose") as u8;
 
     env_logger::from_env(Env::default().default_filter_or(match verbosity { 1 => "debug", 2 => "trace", _ => "info"})).init();
 
-    info!("Using config: {}", config);
+    info!("Using config path: {}", config_path);
 
-    let mut yaml_file = File::open(config)?;
-    let mut contents = String::new();
-    yaml_file.read_to_string(&mut contents)?;
-
-    println!("Config loaded: {} Verbosity: {}", config, verbosity);
-
-    let yaml_config = YamlLoader::load_from_str(&contents)
-        .map_err(|err| error!("{:?}", err))
-        .map_err(|_| Error::new(ErrorKind::InvalidData, "Unable to parse yaml file"))?;
-
-    let config = Config::from_yaml(&yaml_config[0])
-        .map_err(|s| { error!("{}", s); s })
-        .map_err(|err| Error::new(ErrorKind::InvalidData, "Unable to parse config section"))?;
-
-    let control_nodes = create_nodes(&yaml_config[0])
-        .map_err(|s| { println!("{}", s); s })
-        .map_err(|_| Error::new(ErrorKind::InvalidData, "Unable to create control configuration"))?;
+    let (config, control_nodes) = load_config(config_path, verbosity)?;
 
     let state_ref = RefCell::new(States::new());
 
-    let client = Mosquitto::new(&config.name);
+    let client = Arc::new(Mosquitto::new(&config.name));
     client.connect(&config.host, 1883)
         .map_err(|_| Error::new(ErrorKind::NotConnected, format!("Unable to connect to host: {}", config.host)))?;
 
@@ -94,8 +79,6 @@ fn main() -> Result<(), Error>
         }
         let op = op.unwrap();
 
-        //state_ref.borrow_mut().push(op);
-
         if state_ref.borrow().contains_key(&op.node) {
             let result = state_ref.borrow_mut().get_mut(&op.node).map(|hmap| {
                 hmap.get_mut(&op.pin_state.pin).map(|col| {
@@ -114,6 +97,11 @@ fn main() -> Result<(), Error>
         }
     });
 
+    let tclient = client.clone();
+    let mosquitto_thread = thread::spawn(move || {
+        tclient.loop_until_disconnect(-1);
+        debug!("Client disconnected");
+    });
     loop {
         let count = apply_heating(&client, &control_nodes, &state_ref.borrow(), &config);
         if count > 0 {
@@ -122,9 +110,6 @@ fn main() -> Result<(), Error>
 
         print_info(&state_ref.borrow());
 
-        client.do_loop(-1)
-            .map_err(|_| Error::new(ErrorKind::NotConnected, format!("Mqtt disconnected")))?;
-
-        thread::sleep(Duration::from_millis(2000));
+        thread::sleep(Duration::from_millis(10000));
     }
 }

@@ -1,8 +1,10 @@
 use std::collections::{HashMap};
-use yaml_rust::{Yaml};
+use yaml_rust::{Yaml, YamlLoader};
 use chrono::{Local};
 use mosquitto_client::{Mosquitto};
-use log::{debug, warn};
+use log::{debug, warn, error};
+use std::fs::File;
+use std::io::{Read, Error, ErrorKind};
 
 use arduino_mqtt_pin::pin::{Temperature, PinCollection};
 use arduino_mqtt_pin::helper::{percent_to_analog, more_recent_date};
@@ -50,12 +52,16 @@ pub fn send_to_zone(client: &Mosquitto, pin: u8, value: u16, namespace: &str, na
         "set" => value
     };
 
+    let topic = format!("{namespace}/nodes/{name}/set/json", namespace=namespace, name=name);
+
     let result = client.publish(
-        &format!("{namespace}/nodes/{name}/set/json", namespace=namespace, name=name),
+        &topic,
         data.dump().as_bytes(),
-        0,
+        1,
         true
     );
+
+    debug!("Message sent: {} {}", topic, data.dump());
 
     if let Err(v) = result {
         warn!("Unable to send data to {}", name);
@@ -142,6 +148,28 @@ pub fn apply_heating(client: &Mosquitto, control_nodes: &ControlNodes, states: &
     count
 }
 
+pub fn load_config(config_path: &str, verbosity: u8) -> Result<(Config, ControlNodes), Error>
+{
+    let mut yaml_file = File::open(config_path)?;
+    let mut contents = String::new();
+    yaml_file.read_to_string(&mut contents)?;
+
+    println!("Config loaded: {} Verbosity: {}", config_path, verbosity);
+
+    let yaml_config = YamlLoader::load_from_str(&contents)
+        .map_err(|err| error!("{:?}", err))
+        .map_err(|_| Error::new(ErrorKind::InvalidData, "Unable to parse yaml file"))?;
+
+    let config = Config::from_yaml(&yaml_config[0])
+        .map_err(|s| { error!("{}", s); s })
+        .map_err(|err| Error::new(ErrorKind::InvalidData, "Unable to parse config section"))?;
+
+    let control_nodes = create_nodes(&yaml_config[0])
+        .map_err(|s| { println!("{}", s); s })
+        .map_err(|_| Error::new(ErrorKind::InvalidData, "Unable to create control configuration"))?;
+    Ok((config, control_nodes))
+}
+
 pub fn print_info(states: &States)
 {
     for (node, state) in states {
@@ -150,5 +178,6 @@ pub fn print_info(states: &States)
         }
     }
 }
+
 
 
