@@ -6,8 +6,8 @@ extern crate json;
 extern crate clap;
 #[macro_use]
 extern crate log;
-
-use std::collections::{HashMap};
+#[macro_use]
+extern crate derive_new;
 
 use mosquitto_client::{Mosquitto};
 use std::io::{Error, ErrorKind};
@@ -26,8 +26,8 @@ pub mod helper;
 pub mod zone;
 
 use crate::config::{States};
-use crate::helper::{print_info, apply_heating, load_config};
-use arduino_mqtt_pin::pin::{PinOperation, PinCollection};
+use crate::helper::{print_info, apply_heating, load_config, add_state};
+use arduino_mqtt_pin::pin::{PinOperation};
 
 fn main() -> Result<(), Error>
 {
@@ -43,7 +43,13 @@ fn main() -> Result<(), Error>
 
     let (config, control_nodes) = load_config(config_path, verbosity)?;
 
-    let states = RefCell::new(States::new());
+    //let states = RefCell::new(States::new());
+
+    let repository = RefCell::new(PinStateRepository::new(States::new()));
+    let temperature_decider = TemperatureDecider::new(&config);
+    let zone_decider = ZoneDecider::new(&temperature_decider);
+    let heater_decider = HeaterDecider::new(&config);
+    let state_retriever = StateRetriever::new(&repository, &heater_decider, &zone_decider, &config);
 
     let client = Mosquitto::new(&format!("{}-main", config.name));
     client.connect(&config.host, 1883)
@@ -80,35 +86,25 @@ fn main() -> Result<(), Error>
         }
         let op = op.unwrap();
 
-        if states.borrow().contains_key(&op.node) {
-            let result = states.borrow_mut().get_mut(&op.node).map(|hmap| {
-                hmap.get_mut(&op.pin_state.pin).map(|col| {
-                    col.push(&op.pin_state);
-                }).unwrap_or_else(|| {
-                    let mut arr = PinCollection::new();
-                    arr.push(&op.pin_state.clone());
-                    hmap.insert(op.pin_state.pin, arr);
-                });
-            });
-            if !result.is_some() {
-                warn!("Failed to add state");
-            }
-        } else {
-            let mut col = HashMap::new();
-            let mut arr = PinCollection::new();
-            arr.push(&op.pin_state.clone());
-            col.insert(op.pin_state.pin, arr);
-            states.borrow_mut().insert(op.node, col);
-        }
+        repository.borrow_mut().save_state(op);
+
+        //add_state(&mut states.borrow_mut(), &op);
+
     });
 
     loop {
-        let count = apply_heating(&client, &control_nodes, &states.borrow(), &config);
-        if count > 0 {
-            info!("States expected to change: {}", count);
+        let controls: PinChanges = state_retriever.get_pins_expected_to_change(Local::now());
+        if pins.len() > 0 {
+            info!("States expected to change: {}", pins.len());
         }
 
-        print_info(&states.borrow());
+        for (control_name, pins) in controls {
+            for (pin, value) in pins {
+                send_value(client, pin, value, control_name);
+            }
+        }
+
+        print_info(&repository.borrow());
 
         for i in 0..20 {
             let conn_result = client.do_loop(-1)

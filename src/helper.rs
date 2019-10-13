@@ -6,44 +6,11 @@ use log::{debug, warn, error};
 use std::fs::File;
 use std::io::{Read, Error, ErrorKind};
 
-use arduino_mqtt_pin::pin::{Temperature, PinCollection};
+use arduino_mqtt_pin::pin::{Temperature, PinCollection, PinOperation};
 use arduino_mqtt_pin::helper::{percent_to_analog, more_recent_date};
 
 use crate::zone::{Zone};
 use crate::config::{ControlNodes, ControlNode, States, Config};
-
-pub fn create_nodes(yaml: &Yaml) -> Result<ControlNodes, String>
-{
-    let mut control_nodes = ControlNodes::new();
-    let controls = yaml["controls"].as_hash();
-    if !controls.is_some() {
-       return Err("Failed to parse controls".to_string())
-    }
-    for (key, node) in controls.unwrap() {
-        if !key.as_str().is_some() {
-            continue;
-        }
-
-        let yaml_zones = node["zones"].as_hash();
-        if !yaml_zones.is_some() {
-            return Err("Failed to parse zones".to_string())
-        }
-
-        let mut zones: HashMap<String, Zone> = HashMap::new();
-        for (zone_name, zone) in yaml_zones.unwrap() {
-            if !zone_name.as_str().is_some() {
-                continue;
-            }
-            let z = Zone::from_yaml(zone_name.as_str().unwrap(), zone)?;
-            zones.insert(z.name.clone(), z);
-        }
-        let name = key.as_str().unwrap();
-        let control_pin = node["control_pin"].as_i64().unwrap_or(0) as u8;
-
-        control_nodes.insert(name.to_string(), ControlNode {name: name.to_string(), control_pin, zones});
-    }
-    return Ok(control_nodes);
-}
 
 pub fn send_to_zone(client: &Mosquitto, pin: u8, value: u16, namespace: &str, name: &str) -> bool
 {
@@ -69,6 +36,8 @@ pub fn send_to_zone(client: &Mosquitto, pin: u8, value: u16, namespace: &str, na
     }
     true
 }
+
+
 
 pub fn apply_heating(client: &Mosquitto, control_nodes: &ControlNodes, states: &States, config: &Config) -> u16
 {
@@ -148,33 +117,13 @@ pub fn apply_heating(client: &Mosquitto, control_nodes: &ControlNodes, states: &
     count
 }
 
-pub fn load_config(config_path: &str, verbosity: u8) -> Result<(Config, ControlNodes), Error>
+
+pub fn print_info(control_nodes, &ControlNodes, repository: &StatePinRepository)
 {
-    let mut yaml_file = File::open(config_path)?;
-    let mut contents = String::new();
-    yaml_file.read_to_string(&mut contents)?;
-
-    println!("Config loaded: {} Verbosity: {}", config_path, verbosity);
-
-    let yaml_config = YamlLoader::load_from_str(&contents)
-        .map_err(|err| error!("{:?}", err))
-        .map_err(|_| Error::new(ErrorKind::InvalidData, "Unable to parse yaml file"))?;
-
-    let config = Config::from_yaml(&yaml_config[0])
-        .map_err(|s| { error!("{}", s); s })
-        .map_err(|err| Error::new(ErrorKind::InvalidData, "Unable to parse config section"))?;
-
-    let control_nodes = create_nodes(&yaml_config[0])
-        .map_err(|s| { println!("{}", s); s })
-        .map_err(|_| Error::new(ErrorKind::InvalidData, "Unable to create control configuration"))?;
-    Ok((config, control_nodes))
-}
-
-pub fn print_info(states: &States)
-{
-    for (node, state) in states {
-        for (pin, col) in state {
-            debug!("Node: {} Pin: {} Collection: {:?} {:?}", node, pin, col.get_last_changed_value(), col.get_last_changed_dt());
+    for (control_name, node) in control_nodes {
+        for (zone_name, zone) in node.zones {
+            debug!("Node: {} Pin: {} Collection: {:?}", node, pin, col.get_last_changed_value(), col.get_last_changed_dt());
+            debug!("Node: {} Pin: {} Collection: {:?}", node, pin, col.get_last_changed_value(), col.get_last_changed_dt());
         }
     }
 }
