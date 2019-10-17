@@ -1,7 +1,7 @@
 
 pub type States = HashMap<String, HashMap<u8, PinCollection>>;
 
-#[derive(Default)]
+#[derive(new)]
 struct PinStateRepository<'s>
 {
     states: &'s States
@@ -9,11 +9,6 @@ struct PinStateRepository<'s>
 
 impl PinStateRepository
 {
-    /*pub fn new() -> PinStateRepository
-    {
-        PinStateRepository { states: States::new() }
-    }
-*/
     pub fn save_state(&mut self, op: &PinOperation)
     {
         if states.contains_key(&op.node) {
@@ -48,12 +43,13 @@ impl PinStateRepository
         self.get_pin_collection(name ,pin).map(|col: &PinCollection| col.get_average_temperature(duration))
     }
 
-    pub fn get_first_zone_on_dt(&self, duration: &Duration) -> Option<PinState>
+    pub fn get_first_zone_on_dt(&self, control_nodes: &ControlNodes, since: &DateTime<Local>) -> Option<PinState>
     {
-        let first_by_node = self.states.iter().map(|pins| {
-            pins.iter().filter_map(|col| if col.is_on() { Some(col.get_last_changed_dt()) } else { None }).min()
-        });
-        first_by_node.iter().min()
+        nodes.iter().map(|control_name, control_node|
+            contol_node.iter().filter_map(|zone|
+                self.get_last_changed_pin_state(control_name, zone.control_pin).map(|state| if state.is_on() && state.dt > since { Some(state.dt) } else { None })
+            ).min()
+        ).min();
     }
 
     fn get_pin_collection(&self, name: &str, pin: u8) -> Option<&PinCollection>
