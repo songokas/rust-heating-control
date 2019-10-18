@@ -16,7 +16,8 @@ use std::thread;
 use std::cell::RefCell;
 use clap::{App};
 use env_logger::Env;
-use log::{debug, warn};
+use log::{warn};
+use chrono::{Local};
 
 #[path = "../config.rs"]
 pub mod config;
@@ -24,13 +25,21 @@ pub mod config;
 pub mod helper;
 #[path = "../zone.rs"]
 pub mod zone;
+#[path = "../repository.rs"]
+pub mod repository;
+#[path = "../deciders.rs"]
+pub mod deciders;
+#[path = "../state_retriever.rs"]
+pub mod state_retriever;
 
-use crate::config::{load_config, create_nodes};
+use crate::config::{load_config};
 use crate::helper::{print_info, send_to_zone};
-use crate::deciders::{ZoneDecider, TemperatureDecider, HeaterDecider};
-use crate::state_retriever::{StateRetriever};
+use crate::deciders::{ZoneStateDecider, TemperatureStateDecider, HeaterDecider};
+use crate::state_retriever::{StateRetriever, PinChanges};
 use crate::repository::{States, PinStateRepository};
 use arduino_mqtt_pin::pin::{PinOperation};
+use std::sync::{Arc};
+use spin::RwLock;
 
 fn main() -> Result<(), Error>
 {
@@ -48,11 +57,12 @@ fn main() -> Result<(), Error>
 
     //let states = RefCell::new(States::new());
 
-    let repository = RefCell::new(PinStateRepository::new(States::new()));
-    let temperature_decider = TemperatureDecider::new(&config);
-    let zone_decider = ZoneDecider::new(&temperature_decider);
-    let heater_decider = HeaterDecider::new(&config);
-    let state_retriever = StateRetriever::new(&repository, &heater_decider, &zone_decider, &config);
+    let repository = Arc::new(RwLock::new(PinStateRepository::new(States::new())));
+    let temperature_decider = TemperatureStateDecider::new(&config);
+    let zone_decider = ZoneStateDecider::new(&temperature_decider, &config);
+    let r1 = &*repository.read();
+    let heater_decider = HeaterDecider::new(r1, &config);
+    let state_retriever = StateRetriever::new(r1, &heater_decider, &zone_decider, &config);
 
     let client = Mosquitto::new(&format!("{}-main", config.name));
     client.connect(&config.host, 1883)
@@ -77,7 +87,8 @@ fn main() -> Result<(), Error>
 
 
     let mut m = client.callbacks(());
-    m.on_message(|_,msg| {
+    let mrepository = Arc::clone(&repository);
+    m.on_message(move |_,msg| {
 
         //debug!("Message received: {:?} {}", msg, msg.text());
 
@@ -89,25 +100,25 @@ fn main() -> Result<(), Error>
         }
         let op = op.unwrap();
 
-        repository.borrow_mut().save_state(op);
+        mrepository.write().save_state(&op);
 
         //add_state(&mut states.borrow_mut(), &op);
 
     });
 
     loop {
-        let controls: PinChanges = state_retriever.get_pins_expected_to_change(Local::now());
-        if pins.len() > 0 {
-            info!("States expected to change: {}", pins.len());
+        let controls: PinChanges = state_retriever.get_pins_expected_to_change(&control_nodes, &Local::now());
+        if controls.len() > 0 {
+            info!("States expected to change: {}", controls.len());
         }
 
-        for (control_name, pins) in controls {
+        for (control_name, pins) in &controls {
             for (pin, value) in pins {
-                send_value(client, pin, value, control_name);
+                send_to_zone(&client, *pin, value.as_u16(), &config.name, control_name);
             }
         }
 
-        print_info(&repository.borrow());
+        print_info(r1, &control_nodes);
 
         for i in 0..20 {
             let conn_result = client.do_loop(-1)

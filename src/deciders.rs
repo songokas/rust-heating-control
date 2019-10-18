@@ -1,88 +1,91 @@
 use chrono::{DateTime, Local, Duration};
+use arduino_mqtt_pin::pin::{PinState, PinValue, Temperature};
+use crate::config::{ControlNodes, Config};
+use crate::repository::PinStateRepository;
+use arduino_mqtt_pin::helper::percent_to_analog;
+use crate::zone::Zone;
 
 #[derive(new)]
-struct ZoneStateDecider<'t, 'c>
+pub struct ZoneStateDecider<'a>
 {
-    temp_decider: &'t TemperatureStateDecider,
-    config: &'c Config
+    temp_decider: &'a TemperatureStateDecider<'a>,
+    config: &'a Config
 }
 
-impl ZoneStateDecider
+impl ZoneStateDecider<'_>
 {
 
-    pub fn should_be_on(last_state: &PinState, zone: &Zone, current_temperature: &Temperature, now: DateTime<Local>) -> bool
+    pub fn should_be_on(&self, last_state: &PinState, zone: &Zone, current_temperature: &Temperature, now: DateTime<Local>) -> bool
     {
-        if let Some(expected_temperature) = zone.get_exppected_temperature(now) {
+        if let Some(expected_temperature) = zone.get_expected_temperature(&now.time()) {
             if last_state.is_on() {
-                current_temperature < expected_temperature
+                *current_temperature < expected_temperature
             } else {
-                current_temperature < expected_temperature - Temperature::new(config.temperature_drop_wait)
+                *current_temperature < expected_temperature - Temperature::new(self.config.temperature_drop_wait)
             }
         } else {
             false
         }
     }
 
-    pub fn get_value_to_change_to(last_state: &PinState, zone: &Zone, current_temperature: &Temperature, now: DateTime<Local>) -> Option<PinValue>
+    pub fn get_value_to_change_to(&self, last_state: &PinState, zone: &Zone, current_temperature: &Temperature, now: &DateTime<Local>) -> Option<PinValue>
     {
-        let zone_should_be_on = if let Some(expected_temperature) = zone.get_exppected_temperature(now) && !last_state.is_on() {
-            current_temperature < expected_temperature - Temperature::new(config.temperature_drop_wait)
-        } else {
-            false
-        };
+        let zone_should_be_on = zone.get_expected_temperature(&now.time()).map(|expected_temperature|
+            !last_state.is_on() && *current_temperature < expected_temperature - Temperature::new(self.config.temperature_drop_wait)
+        ).unwrap_or(false);
         if last_state.is_on() && !zone_should_be_on {
             return Some(PinValue::Analog(0u16));
         }
         if !last_state.is_on() && zone_should_be_on {
-            return current_temperature.map(|temperature| temp_decider.get_expected_value(temperature, zone)).unwrap_or(0);
+            return self.temp_decider.get_expected_value(current_temperature, zone, now);
         }
         None
     }
 }
 
 #[derive(new)]
-struct TemperatureStateDecider<'c>
+pub struct TemperatureStateDecider<'a>
 {
-    config: &'c Config
+    config: &'a Config
 }
 
-impl TemperatureStateDecider
+impl TemperatureStateDecider<'_>
 {
     pub fn get_expected_value(&self, current_temperature: &Temperature, zone: &Zone, now: &DateTime<Local>) -> Option<PinValue>
     {
-        let expected_temperature = zone.get_expected_temperature(now)?;
-        let diff = (expected_temperature - current_temperature).abs();
-        let value = if diff <= Temperature::new(config.min_temperature_diff_for_pwm) {
-            percent_to_analog(config.min_pwm_state)
+        let expected_temperature = zone.get_expected_temperature(&now.time())?;
+        let diff = (expected_temperature - current_temperature.clone()).abs();
+        let value = if diff <= Temperature::new(self.config.min_temperature_diff_for_pwm) {
+            percent_to_analog(self.config.min_pwm_state)
         } else if (diff < Temperature { value: 1f32} ) {
             percent_to_analog((diff.value * 100f32) as u8)
         } else {
             percent_to_analog(100)
         };
-        PinValue::Analog(value)
+        Some(PinValue::Analog(value))
     }
 }
 
 #[derive(new)]
-struct HeaterDecider<'c, 'r>
+pub struct HeaterDecider<'a>
 {
-    repository: &'r PinStateRepository
-    config: &'c Config
+    repository: &'a PinStateRepository,
+    config: &'a Config
 }
 
-impl HeaterDecider
+impl HeaterDecider<'_>
 {
-    pub fn should_be_on(&self, nodes: &ControlNodes, now: &DateTime<Local>s) -> bool
+    pub fn should_be_on(&self, nodes: &ControlNodes, now: &DateTime<Local>) -> bool
     {
-        if Some(firt_zone_on) = repository.get_first_zone_on(nodes, now - Duration::hours(24)) {
-            return now - first_zone_on > Duration::seconds(config.acctuator_warmup_time as i64);
+        if let Some(first_zone_on) = self.repository.get_first_zone_on_dt(nodes, &(*now - Duration::hours(24))) {
+            return *now - first_zone_on > Duration::seconds(self.config.acctuator_warmup_time as i64);
         }
         false
     }
 
-    pub fn can_turn_zones_off(&self, state: &PinState, now: &DateTime<Local>)
+    pub fn can_turn_zones_off(&self, state: &PinState, now: &DateTime<Local>) -> bool
     {
-        state.is_off() && now - state.dt > Duration::seconds(config.heater_pump_stop_time as i64) 
+        !state.is_on() && *now - state.dt > Duration::seconds(self.config.heater_pump_stop_time as i64)
     }
 }
 

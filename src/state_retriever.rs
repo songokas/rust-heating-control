@@ -1,24 +1,31 @@
-type PinChanges = HashMap<String, HashMap<u8, PinValue>>;
+use crate::config::{Zones, ControlNodes, Config};
+use std::collections::HashMap;
+use arduino_mqtt_pin::pin::PinValue;
+use crate::repository::PinStateRepository;
+use crate::deciders::{HeaterDecider, ZoneStateDecider};
+use chrono::{DateTime, Local};
+
+pub type PinChanges = HashMap<String, HashMap<u8, PinValue>>;
 
 #[derive(new)]
-struct StateRetriever<'r, 'h, 'z, 'c>
+pub struct StateRetriever<'a>
 {
-    repository: &'r PinStateRepository,
-    heater_decider: &'h HeaterDecider,
-    zone_decider: &'z ZoneDecider,
-    config: &'c Config
+    repository: &'a PinStateRepository,
+    heater_decider: &'a HeaterDecider<'a>,
+    zone_decider: &'a ZoneStateDecider<'a>,
+    config: &'a Config
 }
 
-impl StateRetriever
+impl StateRetriever<'_>
 {
-    pub fn get_zone_pins_to_change(&self, control_name: &str, zones: &Zones) -> HashMap<u8, PinValue>
+    pub fn get_zone_pins_to_change(&self, control_name: &str, zones: &Zones, now: &DateTime<Local>) -> HashMap<u8, PinValue>
     {
         let mut zone_changes: HashMap<u8, PinValue> = HashMap::new();
         for (zone_name, zone) in zones {
-            if let Some(last_state) = repository.get_last_changed_pin_state(control_name, zone.control_pin) {
-                if let Some(avg_temp) = repository.get_average_temperature(zone_name, zone.sensor_pin, Duration::seconds(config.consider_duration)) {
-                    zone_decider.get_value_to_change_to(last_state, zone, avg_tem)
-                        .map(|value| zone_changes.insert(zone.contro_pin, value));
+            if let Some(last_state) = self.repository.get_last_changed_pin_state(control_name, zone.control_pin) {
+                if let Some(avg_temp) = self.repository.get_average_temperature(zone_name, zone.sensor_pin) {
+                    self.zone_decider.get_value_to_change_to(last_state, zone, &avg_temp, now)
+                        .map(|value| zone_changes.insert(zone.control_pin, value));
                 } else if last_state.is_on() {
                     zone_changes.insert(zone.control_pin, PinValue::Analog(0u16));
                 }
@@ -27,31 +34,30 @@ impl StateRetriever
         zone_changes
     }
 
-    pub fn get_pins_expected_to_change(&self, control_nodes: &ControlNodes) -> PinChanges
+    pub fn get_pins_expected_to_change(&self, control_nodes: &ControlNodes, now: &DateTime<Local>) -> PinChanges
     {
-        let now = Local::now();
         let mut control_changes: PinChanges = PinChanges::new();
 
-        let current_state = repository.get_last_changed_pin_state(config.heater_control_name, config.heater_control_pin);
+        let current_state = self.repository.get_last_changed_pin_state(&self.config.heater_control_name, self.config.heater_control_pin);
         if let Some(state) = current_state {
             if state.is_on() && self.all_zones_should_be_off(control_nodes) {
-                self::turn_heater(control_changes, false);
+                self.turn_heater(&mut control_changes, false);
                 return control_changes;
-            } else if !heater_decider.can_turn_zones_off(state, now) {
+            } else if !self.heater_decider.can_turn_zones_off(state, now) {
                 return control_changes;
             }
         }
 
         for (control_name, control_node) in control_nodes {
-            let zone_changes = self.get_zone_pins_to_change(control_name, control_node.zones);
+            let zone_changes = self.get_zone_pins_to_change(control_name, &control_node.zones, now);
             if zone_changes.len() > 0 {
-                control_changes.insert(control_name, zone_changes);
+                control_changes.insert(control_name.clone(), zone_changes);
             }
         }
 
         if let Some(state) = current_state {
-            if !state.is_on() && heater_decider.should_be_on(control_nodes, now) {
-                self::turn_heater(control_changes, true);
+            if !state.is_on() && self.heater_decider.should_be_on(control_nodes, now) {
+                self.turn_heater(&mut control_changes, true);
             }
         }
 
@@ -62,10 +68,10 @@ impl StateRetriever
     {
         let now = Local::now();
         for (control_name, control_node) in control_nodes {
-            for (zone_name, zone) in control_node.zones {
+            for (zone_name, zone) in &control_node.zones {
                 if let Some(last_state) = self.repository.get_last_changed_pin_state(control_name, zone.control_pin) {
-                    if let Some(avg_temp) = self.repository.get_average_temperature(zone_name, zone.sensor_pin, Duration::seconds(config.consider_duration)) {
-                        if zone_decider.should_be_on(last_state, avg_temp, now) {
+                    if let Some(avg_temp) = self.repository.get_average_temperature(zone_name, zone.sensor_pin) {
+                        if self.zone_decider.should_be_on(last_state, zone, &avg_temp, now) {
                             return false;
                         }
                     }
@@ -75,13 +81,14 @@ impl StateRetriever
         true
     }
 
-    fn turn_heater(control_changes: &mut PinChanges, bool value)
+    fn turn_heater(&self, control_changes: &mut PinChanges, value: bool)
     {
-        control_changes.entry(config.heater_control_name).and_modify(|zone_changes| {
-            zone_changes.insert(config.heater_control_pin, PinValue::Digital(value));
+        control_changes.entry(self.config.heater_control_name.clone()).and_modify(|zone_changes| {
+            zone_changes.insert(self.config.heater_control_pin, PinValue::Digital(value));
         }).or_insert_with(|| {
-            let zone_changes = ZoneChanges::new();
-            zone_changes.insert(config.heater_control_pin, PinValue::Digital(value));
+            let mut zone_changes = HashMap::new();
+            zone_changes.insert(self.config.heater_control_pin, PinValue::Digital(value));
+            zone_changes
         });
     }
 }

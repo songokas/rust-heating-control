@@ -11,8 +11,9 @@ chrono = "0.4"
 mosquitto-client = "0.1.5"
 arraydeque = "0.4"
 clap = {version = "~2.27.0", features = ["yaml"]}
-arduino-mqtt-pin = { version = "~0.1", git = "https://github.com/songokas/rust-arduino-mqtt-pin" }
+arduino-mqtt-pin = { branch = "heating", git = "https://github.com/songokas/rust-arduino-mqtt-pin" }
 log = "0.4.0"
 env_logger = "0.7.0"
 simulacrum = "0.3.0"
 derive-new = "0.5"
+spin = "0.5.2"

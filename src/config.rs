@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use yaml_rust::{Yaml, YamlLoader};
+use log::{error};
 
-use arduino_mqtt_pin::pin::PinCollection;
 use crate::zone::Zone;
 use std::fs::File;
-use std::io::{Error, ErrorKind};
+use std::io::{Error, ErrorKind, Read};
 
 pub type ControlNodes = HashMap<String, ControlNode>;
 pub type Zones = HashMap<String, Zone>;
@@ -28,13 +28,13 @@ pub struct Config
     pub min_pwm_state: u8,
     pub min_temperature_diff_for_pwm: f32,
     pub temperature_drop_wait: f32,
-    pub heater_control_ame: String,
+    pub heater_control_name: String,
     pub heater_control_pin: u8
 }
 
 impl Config
 {
-    pub fn from_yaml(yaml: &Yaml) -> Result<Config, &str>
+    pub fn from_yaml(yaml: &Yaml) -> Result<Config, String>
     {
         let name = yaml["name"].as_str().ok_or("yaml missing name")?;
         let host = yaml["host"].as_str().ok_or("yaml missing host")?;
@@ -44,12 +44,7 @@ impl Config
         let min_pwm_state = yaml["min_pwm_state"].as_i64().ok_or("ymal missing min_pwm_state")? as u8;
         let min_temperature_diff_for_pwm = yaml["min_temperature_diff_for_pwm"].as_f64().ok_or("yaml missing min_temperature_diff_for_pwm")? as f32;
         let temperature_drop_wait = yaml["temperature_drop_wait"].as_f64().ok_or("yaml missing temperature_drop_wait")? as f32;
-
-        let (heater_control_name, heater_control_pin) = Config::get_control_names(yaml).unwrap_or((String::from(""), 0));
-
-        if !(heater_control_pin > 0) {
-            return Err("One of the control must define a control_pin");
-        }
+        let (heater_control_name, heater_control_pin) =  Config::get_control_names(yaml)?;
 
         Ok(Config {
             name: name.to_string(),
@@ -61,11 +56,11 @@ impl Config
             min_temperature_diff_for_pwm,
             temperature_drop_wait,
             heater_control_name,
-            heator_control_pin
+            heater_control_pin
         })
     }
 
-    fn get_control_names(yaml: &Yaml) -> Option<(String, u8)>
+    fn get_control_names(yaml: &Yaml) -> Result<(String, u8), String>
     {
         let controls = yaml["controls"].as_hash();
         if !controls.is_some() {
@@ -78,10 +73,10 @@ impl Config
             let name = key.as_str().unwrap();
             let control_pin = node["control_pin"].as_i64().unwrap_or(0) as u8;
             if control_pin > 0 {
-                return Some((name.to_string(), control_pin));
+                return Ok((name.to_string(), control_pin));
             }
         }
-        None
+        Err("Main control not found".to_string())
     }
 
 

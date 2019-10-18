@@ -16,10 +16,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "arduino-mqtt-pin"
 version = "0.1.0"
-source = "git+https://github.com/songokas/rust-arduino-mqtt-pin#2210d67620ad1691bfe9dd7b34f17a00a7b38bd4"
+source = "git+https://github.com/songokas/rust-arduino-mqtt-pin?branch=heating#0fc0b89016996f7a7f33b0279f5367665edbb791"
 dependencies = [
  "arraydeque 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "derive-new 0.5.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "json 0.12.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "mosquitto-client 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -121,7 +122,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "heating-control"
 version = "0.1.0"
 dependencies = [
- "arduino-mqtt-pin 0.1.0 (git+https://github.com/songokas/rust-arduino-mqtt-pin)",
+ "arduino-mqtt-pin 0.1.0 (git+https://github.com/songokas/rust-arduino-mqtt-pin?branch=heating)",
  "arraydeque 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.27.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -131,6 +132,7 @@ dependencies = [
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "mosquitto-client 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "simulacrum 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "yaml-rust 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -338,6 +340,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "spin"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "strsim"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -458,7 +465,7 @@ dependencies = [
 [metadata]
 "checksum aho-corasick 0.7.6 (registry+https://github.com/rust-lang/crates.io-index)" = "58fb5e95d83b38284460a5fda7d6470aa0b8844d283a0b614b8535e880800d2d"
 "checksum ansi_term 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "23ac7c30002a5accbf7e8987d0632fa6de155b7c3d39d0067317a391e00a2ef6"
-"checksum arduino-mqtt-pin 0.1.0 (git+https://github.com/songokas/rust-arduino-mqtt-pin)" = "<none>"
+"checksum arduino-mqtt-pin 0.1.0 (git+https://github.com/songokas/rust-arduino-mqtt-pin?branch=heating)" = "<none>"
 "checksum arraydeque 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)" = "f0ffd3d69bd89910509a5d31d1f1353f38ccffdd116dd0099bbd6627f7bd8ad8"
 "checksum atty 0.2.13 (registry+https://github.com/rust-lang/crates.io-index)" = "1803c647a3ec87095e7ae7acfca019e98de5ec9a7d01343f611cf3152ed71a90"
 "checksum autocfg 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "b671c8fb71b457dd4ae18c4ba1e59aa81793daacc361d82fcd410cef0d491875"
@@ -496,6 +503,7 @@ dependencies = [
 "checksum simulacrum_mock 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "b0a3be81ab017d792fee7be1faa37f3949ebde8f85351951fa1758ae95baec4a"
 "checksum simulacrum_shared 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "f784fd3a3691ec375a713ee20dff673a45ca221002e7b4e69c7940320b7e316a"
 "checksum simulacrum_user 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "db58f8fdfe08b9b95bf3ebce8d92091a5d65107da1afdeeb9004e1f6ed2ae81f"
+"checksum spin 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)" = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 "checksum strsim 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)" = "b4d15c810519a91cf877e7e36e63fe068815c678181439f2f29e2562147c3694"
 "checksum syn 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "66850e97125af79138385e9b88339cbcd037e3f28ceab8c5ad98e64f0f1f80bf"
 "checksum termcolor 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "96d6098003bde162e4277c70665bd87c326f5a0c3f3fbfb285787fa482d54e6e"
