@@ -3,7 +3,10 @@
 
 #[macro_use]
 extern crate json;
+#[macro_use]
 extern crate log;
+#[macro_use]
+extern crate derive_new;
 
 use std::collections::{HashMap};
 
@@ -13,8 +16,7 @@ use std::time::Duration;
 use std::thread;
 use std::cell::RefCell;
 use env_logger::Env;
-use log::{debug, info, warn, error};
-use std::sync::{Arc, Mutex};
+use log::{debug, info, warn};
 
 #[path = "../config.rs"]
 pub mod config;
@@ -22,9 +24,10 @@ pub mod config;
 pub mod helper;
 #[path = "../zone.rs"]
 pub mod zone;
+#[path = "../repository.rs"]
+pub mod repository;
 
-use crate::config::{ControlNodes};
-use crate::helper::{load_config};
+use crate::config::{load_config, ControlNodes};
 
 fn send_temperature(client: &Mosquitto, namespace: &str, name: &str, pin: u8, value: f32) -> bool
 {
@@ -84,6 +87,7 @@ fn main() -> Result<(), Error>
 
     //env_logger::from_env(Env::default().default_filter_or("debug")).init();
     let (config, control_nodes) = load_config("src/config.yml", 0)?;
+    env_logger::from_env(Env::default().default_filter_or("debug")).init();
 
     let client = Mosquitto::new("test1");//&format!("{}-simulate", config.name));
     client.connect(&config.host, 1883)

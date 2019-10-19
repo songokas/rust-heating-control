@@ -9,7 +9,7 @@ use std::io::{Error, ErrorKind, Read};
 pub type ControlNodes = HashMap<String, ControlNode>;
 pub type Zones = HashMap<String, Zone>;
 
-#[derive(Debug)]
+#[derive(Debug, new)]
 pub struct ControlNode
 {
     pub name: String,
@@ -17,19 +17,25 @@ pub struct ControlNode
     pub zones: Zones
 }
 
-#[derive(Debug)]
+#[derive(Debug, new)]
 pub struct Config
 {
     pub name: String,
     pub host: String,
-    pub acctuator_warmup_time: u16,
-    pub heater_pump_stop_time: u16,
-    pub constant_temperature_expected: f32,
-    pub min_pwm_state: u8,
-    pub min_temperature_diff_for_pwm: f32,
-    pub temperature_drop_wait: f32,
     pub heater_control_name: String,
-    pub heater_control_pin: u8
+    pub heater_control_pin: u8,
+    #[new(value = "300")]
+    pub acctuator_warmup_time: u16,
+    #[new(value = "600")]
+    pub heater_pump_stop_time: u16,
+    #[new(value = "20.0")]
+    pub constant_temperature_expected: f32,
+    #[new(value = "30")]
+    pub min_pwm_state: u8,
+    #[new(value = "0.3")]
+    pub min_temperature_diff_for_pwm: f32,
+    #[new(value = "0.7")]
+    pub temperature_drop_wait: f32,
 }
 
 impl Config

@@ -34,8 +34,7 @@ pub fn print_info(repository: &PinStateRepository, control_nodes: &ControlNodes)
         for (zone_name, zone) in &node.zones {
             let state = repository.get_last_changed_pin_state(control_name, zone.control_pin);
             let temp = repository.get_average_temperature(zone_name, zone.sensor_pin);
-            debug!("Node: {} State: {:?}", control_name, state);
-            debug!("Zone: {} Temperature: {:?}", zone_name, temp);
+            debug!("Node: {} Zone: {} State: {:?} Temperature: {:?}", control_name, zone_name, state, temp);
         }
     }
 }

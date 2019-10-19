@@ -9,11 +9,14 @@ extern crate log;
 #[macro_use]
 extern crate derive_new;
 
+#[cfg(test)]
+#[macro_use]
+extern crate speculate;
+
 use mosquitto_client::{Mosquitto};
 use std::io::{Error, ErrorKind};
 use std::time::Duration;
 use std::thread;
-use std::cell::RefCell;
 use clap::{App};
 use env_logger::Env;
 use log::{warn};
@@ -38,8 +41,7 @@ use crate::deciders::{ZoneStateDecider, TemperatureStateDecider, HeaterDecider};
 use crate::state_retriever::{StateRetriever, PinChanges};
 use crate::repository::{States, PinStateRepository};
 use arduino_mqtt_pin::pin::{PinOperation};
-use std::sync::{Arc};
-use spin::RwLock;
+use std::sync::{Arc, RwLock};
 
 fn main() -> Result<(), Error>
 {
@@ -57,12 +59,11 @@ fn main() -> Result<(), Error>
 
     //let states = RefCell::new(States::new());
 
-    let repository = Arc::new(RwLock::new(PinStateRepository::new(States::new())));
+    let repository = Arc::new(PinStateRepository::new(RwLock::new(States::new())));
     let temperature_decider = TemperatureStateDecider::new(&config);
     let zone_decider = ZoneStateDecider::new(&temperature_decider, &config);
-    let r1 = &*repository.read();
-    let heater_decider = HeaterDecider::new(r1, &config);
-    let state_retriever = StateRetriever::new(r1, &heater_decider, &zone_decider, &config);
+    let heater_decider = HeaterDecider::new(&repository, &config);
+    let state_retriever = StateRetriever::new(&repository, &heater_decider, &zone_decider, &config);
 
     let client = Mosquitto::new(&format!("{}-main", config.name));
     client.connect(&config.host, 1883)
@@ -100,10 +101,8 @@ fn main() -> Result<(), Error>
         }
         let op = op.unwrap();
 
-        mrepository.write().save_state(&op);
-
+        mrepository.save_state(&op);
         //add_state(&mut states.borrow_mut(), &op);
-
     });
 
     loop {
@@ -118,7 +117,7 @@ fn main() -> Result<(), Error>
             }
         }
 
-        print_info(r1, &control_nodes);
+        print_info(&repository, &control_nodes);
 
         for i in 0..20 {
             let conn_result = client.do_loop(-1)
