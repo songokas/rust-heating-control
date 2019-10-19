@@ -6,28 +6,43 @@ extern crate json;
 extern crate clap;
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate derive_new;
 
-use std::collections::{HashMap};
+#[cfg(test)]
+#[macro_use]
+extern crate speculate;
 
 use mosquitto_client::{Mosquitto};
 use std::io::{Error, ErrorKind};
 use std::time::Duration;
 use std::thread;
-use std::cell::RefCell;
 use clap::{App};
 use env_logger::Env;
-use log::{debug, warn};
+use log::{warn};
+use chrono::{Local};
 
 #[path = "../config.rs"]
 pub mod config;
 #[path = "../helper.rs"]
+#[macro_use]
 pub mod helper;
 #[path = "../zone.rs"]
 pub mod zone;
+#[path = "../repository.rs"]
+pub mod repository;
+#[path = "../deciders.rs"]
+pub mod deciders;
+#[path = "../state_retriever.rs"]
+pub mod state_retriever;
 
-use crate::config::{States};
-use crate::helper::{print_info, apply_heating, load_config};
-use arduino_mqtt_pin::pin::{PinOperation, PinCollection};
+use crate::config::{load_config};
+use crate::helper::{print_info, send_to_zone};
+use crate::deciders::{ZoneStateDecider, TemperatureStateDecider, HeaterDecider};
+use crate::state_retriever::{StateRetriever, PinChanges};
+use crate::repository::{States, PinStateRepository};
+use arduino_mqtt_pin::pin::{PinOperation};
+use std::sync::{Arc, RwLock};
 
 fn main() -> Result<(), Error>
 {
@@ -43,7 +58,13 @@ fn main() -> Result<(), Error>
 
     let (config, control_nodes) = load_config(config_path, verbosity)?;
 
-    let states = RefCell::new(States::new());
+    //let states = RefCell::new(States::new());
+
+    let repository = Arc::new(PinStateRepository::new(RwLock::new(States::new())));
+    let temperature_decider = TemperatureStateDecider::new(&config);
+    let zone_decider = ZoneStateDecider::new(&temperature_decider, &config);
+    let heater_decider = HeaterDecider::new(&repository, &config);
+    let state_retriever = StateRetriever::new(&repository, &heater_decider, &zone_decider, &config);
 
     let client = Mosquitto::new(&format!("{}-main", config.name));
     client.connect(&config.host, 1883)
@@ -68,7 +89,8 @@ fn main() -> Result<(), Error>
 
 
     let mut m = client.callbacks(());
-    m.on_message(|_,msg| {
+    let mrepository = Arc::clone(&repository);
+    m.on_message(move |_,msg| {
 
         //debug!("Message received: {:?} {}", msg, msg.text());
 
@@ -80,35 +102,23 @@ fn main() -> Result<(), Error>
         }
         let op = op.unwrap();
 
-        if states.borrow().contains_key(&op.node) {
-            let result = states.borrow_mut().get_mut(&op.node).map(|hmap| {
-                hmap.get_mut(&op.pin_state.pin).map(|col| {
-                    col.push(&op.pin_state);
-                }).unwrap_or_else(|| {
-                    let mut arr = PinCollection::new();
-                    arr.push(&op.pin_state.clone());
-                    hmap.insert(op.pin_state.pin, arr);
-                });
-            });
-            if !result.is_some() {
-                warn!("Failed to add state");
-            }
-        } else {
-            let mut col = HashMap::new();
-            let mut arr = PinCollection::new();
-            arr.push(&op.pin_state.clone());
-            col.insert(op.pin_state.pin, arr);
-            states.borrow_mut().insert(op.node, col);
-        }
+        mrepository.save_state(&op);
+        //add_state(&mut states.borrow_mut(), &op);
     });
 
     loop {
-        let count = apply_heating(&client, &control_nodes, &states.borrow(), &config);
-        if count > 0 {
-            info!("States expected to change: {}", count);
+        let controls: PinChanges = state_retriever.get_pins_expected_to_change(&control_nodes, &Local::now());
+        if controls.len() > 0 {
+            info!("States expected to change: {}", controls.len());
         }
 
-        print_info(&states.borrow());
+        for (control_name, pins) in &controls {
+            for (pin, value) in pins {
+                send_to_zone(&client, *pin, value.as_u16(), &config.name, control_name);
+            }
+        }
+
+        print_info(&repository, &control_nodes);
 
         for i in 0..20 {
             let conn_result = client.do_loop(-1)
