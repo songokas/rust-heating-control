@@ -1,7 +1,7 @@
 name: heating-control
 version: "1.0.0"
 author: Tomas Jakstas <tom.jakstas@gmail.com>
-about: controls heating based with microcontrollers based on 
+about: heating control using mqtt
 args:
     - config:
         short: c

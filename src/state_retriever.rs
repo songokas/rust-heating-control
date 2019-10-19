@@ -40,7 +40,7 @@ impl StateRetriever<'_>
         if let Some(state) = current_state.clone() {
             if state.is_on() && self.all_zones_should_be_off(control_nodes, now) {
                 return self.turn_heater(false);
-            } else if !self.heater_decider.can_turn_zones_off(&state, now) {
+            } else if !state.is_on() && !self.heater_decider.can_turn_zones_off(&state, now) {
                 return PinChanges::new();;
             }
         }

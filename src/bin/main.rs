@@ -58,8 +58,6 @@ fn main() -> Result<(), Error>
 
     let (config, control_nodes) = load_config(config_path, verbosity)?;
 
-    //let states = RefCell::new(States::new());
-
     let repository = Arc::new(PinStateRepository::new(RwLock::new(States::new())));
     let temperature_decider = TemperatureStateDecider::new(&config);
     let zone_decider = ZoneStateDecider::new(&temperature_decider, &config);
@@ -69,7 +67,6 @@ fn main() -> Result<(), Error>
     let client = Mosquitto::new(&format!("{}-main", config.name));
     client.connect(&config.host, 1883)
         .map_err(|e| Error::new(ErrorKind::NotConnected, format!("Unable to connect to host: {} {}", config.host, e)))?;
-
 
     /*
      * receive remote on :
@@ -93,6 +90,9 @@ fn main() -> Result<(), Error>
     m.on_message(move |_,msg| {
 
         //debug!("Message received: {:?} {}", msg, msg.text());
+//        if msg.topic().ends_with("/config/json") {
+//            return;
+//        }
 
         let op = PinOperation::from_message(&msg);
         if !op.is_ok() {
