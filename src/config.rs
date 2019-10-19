@@ -127,7 +127,7 @@ pub fn load_config(config_path: &str, verbosity: u8) -> Result<(Config, ControlN
     let mut contents = String::new();
     yaml_file.read_to_string(&mut contents)?;
 
-    println!("Config loaded: {} Verbosity: {}", config_path, verbosity);
+    debug!("Config loaded: {} Verbosity: {}", config_path, verbosity);
 
     let yaml_config = YamlLoader::load_from_str(&contents)
         .map_err(|err| error!("{:?}", err))

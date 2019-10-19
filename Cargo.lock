@@ -16,7 +16,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "arduino-mqtt-pin"
 version = "0.1.0"
-source = "git+https://github.com/songokas/rust-arduino-mqtt-pin?branch=heating#e47b2e14205c951f99cec56c8fe587d637079f2e"
+source = "git+https://github.com/songokas/rust-arduino-mqtt-pin?branch=heating#ce085fefc03300594f2eb6924e6345bde34fc779"
 dependencies = [
  "arraydeque 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.9 (registry+https://github.com/rust-lang/crates.io-index)",

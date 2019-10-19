@@ -3,7 +3,7 @@ use arduino_mqtt_pin::pin::{PinState, PinValue, Temperature};
 use crate::config::{ControlNodes, Config};
 use crate::repository::PinStateRepository;
 use arduino_mqtt_pin::helper::percent_to_analog;
-use crate::zone::{Interval, Zone}       ;
+use crate::zone::{Zone};
 
 #[derive(new)]
 pub struct ZoneStateDecider<'a>
@@ -83,7 +83,6 @@ impl HeaterDecider<'_>
     pub fn should_be_on(&self, nodes: &ControlNodes, now: &DateTime<Local>) -> bool
     {
         if let Some(first_zone_on) = self.repository.get_first_zone_on_dt(nodes, &(*now - Duration::hours(24))) {
-            println!("{:?}", first_zone_on);
             return *now - first_zone_on > Duration::seconds(self.config.acctuator_warmup_time as i64);
         }
         false
@@ -102,6 +101,7 @@ mod test_deciders
     use super::*;
     use chrono::{TimeZone, NaiveTime};
     use crate::repository::test_repository::{create_nodes, create_repository};
+    use crate::zone::{Interval};
 
     fn create_zone() -> (Zone, Config)
     {

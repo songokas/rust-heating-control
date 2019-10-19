@@ -44,21 +44,19 @@ impl PinStateRepository
             .and_then(|col: &PinCollection| col.get_last_changed())
     }
 
-    pub fn get_average_temperature(&self, name: &str, pin: u8) -> Option<Temperature>
+    pub fn get_average_temperature(&self, name: &str, pin: u8, since: &DateTime<Local>) -> Option<Temperature>
     {
         self.states.read().unwrap().get(name)
             .and_then(|nodes| nodes.get(&pin))
-            .and_then(|col: &PinCollection| col.get_average_temperature())
+            .and_then(|col: &PinCollection| col.get_average_temperature(since))
     }
 
     pub fn get_first_zone_on_dt(&self, control_nodes: &ControlNodes, since: &DateTime<Local>) -> Option<DateTime<Local>>
     {
         control_nodes.iter().filter_map(|(control_name, control_node)| {
             control_node.zones.iter().filter_map(|(zone_name, zone)| {
-                println!("{:?}", zone);
                 self.get_last_changed_pin_state(control_name, zone.control_pin).and_then(|state| {
                     state.is_on();
-                    println!("{:?}", state);
                     if state.is_on() && state.dt > *since { Some(state.dt) } else { None }
                 })
             }).min()
@@ -192,17 +190,20 @@ pub mod test_repository
 
             it "should get average temperature"
             {
+
+                let since = Local.ymd(2019, 8, 1).and_hms(7, 0, 0);
+
                 assert_eq!(
-                    repository.get_average_temperature("zone1", 4).expect("zone 1 temp"),
+                    repository.get_average_temperature("zone1", 4, &since).expect("zone 1 temp"),
                     Temperature::new(18.375)
                 );
 
                 assert!(
-                    repository.get_average_temperature("main", 34).is_none()
+                    repository.get_average_temperature("main", 34, &since).is_none()
                 );
 
                 assert_eq!(
-                    repository.get_average_temperature("zone4", 4).expect("zone 5 temp"),
+                    repository.get_average_temperature("zone4", 4, &since).expect("zone 5 temp"),
                     Temperature::new(22.5)
                 );
 

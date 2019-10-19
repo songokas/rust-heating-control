@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use arduino_mqtt_pin::pin::PinValue;
 use crate::repository::PinStateRepository;
 use crate::deciders::{HeaterDecider, ZoneStateDecider};
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, Duration};
 
 pub type PinChanges = HashMap<String, HashMap<u8, PinValue>>;
 
@@ -23,7 +23,7 @@ impl StateRetriever<'_>
         let mut zone_changes: HashMap<u8, PinValue> = HashMap::new();
         for (zone_name, zone) in zones {
             if let Some(last_state) = self.repository.get_last_changed_pin_state(control_name, zone.control_pin) {
-                if let Some(avg_temp) = self.repository.get_average_temperature(zone_name, zone.sensor_pin) {
+                if let Some(avg_temp) = self.repository.get_average_temperature(zone_name, zone.sensor_pin, &(*now - Duration::hours(1))) {
                     self.zone_decider.get_value_to_change_to(&last_state, zone, &avg_temp, now)
                         .map(|value| zone_changes.insert(zone.control_pin, value));
                 } else if last_state.is_on() {
@@ -70,7 +70,7 @@ impl StateRetriever<'_>
         for (control_name, control_node) in control_nodes {
             for (zone_name, zone) in &control_node.zones {
                 if let Some(last_state) = self.repository.get_last_changed_pin_state(control_name, zone.control_pin) {
-                    if let Some(avg_temp) = self.repository.get_average_temperature(zone_name, zone.sensor_pin) {
+                    if let Some(avg_temp) = self.repository.get_average_temperature(zone_name, zone.sensor_pin, &(*now - Duration::hours(1))) {
                         if self.zone_decider.should_be_on(&last_state, zone, &avg_temp, &now) {
                             return false;
                         }
@@ -99,10 +99,10 @@ impl StateRetriever<'_>
 mod test_deciders
 {
     use super::*;
-    use chrono::{TimeZone, NaiveTime};
+    use chrono::{TimeZone};
     use crate::repository::test_repository::{create_nodes, create_repository};
     use crate::deciders::{TemperatureStateDecider, HeaterDecider, ZoneStateDecider};
-    use arduino_mqtt_pin::pin::{PinState, PinOperation};
+    use arduino_mqtt_pin::pin::{PinState, PinOperation, Temperature};
 
     speculate! {
         describe "state changes"
@@ -152,6 +152,16 @@ mod test_deciders
                 repository.save_state(&PinOperation::new(
                     PinState::new(1, PinValue::Analog(0), Local.ymd(2019, 8, 2).and_hms(9, 10, 0), None),
                     "main".to_owned()
+                ));
+
+                repository.save_state(&PinOperation::new(
+                    PinState::new(4, PinValue::Temperature(Temperature::new(20.5)), Local.ymd(2019, 8, 2).and_hms(22, 33, 0), None),
+                    "zone1".to_owned()
+                ));
+
+                repository.save_state(&PinOperation::new(
+                    PinState::new(4, PinValue::Temperature(Temperature::new(20.5)), Local.ymd(2019, 8, 2).and_hms(22, 33, 0), None),
+                    "zone2".to_owned()
                 ));
 
                 let expected: PinChanges = map!{ "main".to_owned() => map!{ 1 =>  PinValue::Analog(1023), 2 => PinValue::Analog(1023) }};

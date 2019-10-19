@@ -2,6 +2,7 @@ use crate::config::ControlNodes;
 use crate::repository::{PinStateRepository};
 use mosquitto_client::Mosquitto;
 use log::{debug, warn};
+use chrono::{Local, Duration};
 
 pub fn send_to_zone(client: &Mosquitto, pin: u8, value: u16, namespace: &str, name: &str) -> bool
 {
@@ -33,7 +34,7 @@ pub fn print_info(repository: &PinStateRepository, control_nodes: &ControlNodes)
     for (control_name, node) in control_nodes {
         for (zone_name, zone) in &node.zones {
             let state = repository.get_last_changed_pin_state(control_name, zone.control_pin);
-            let temp = repository.get_average_temperature(zone_name, zone.sensor_pin);
+            let temp = repository.get_average_temperature(zone_name, zone.sensor_pin, &(Local::now() - Duration::hours(1)));
             debug!("Node: {} Zone: {} State: {:?} Temperature: {:?}", control_name, zone_name, state, temp);
         }
     }
