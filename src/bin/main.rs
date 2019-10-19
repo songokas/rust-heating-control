@@ -109,7 +109,7 @@ fn main() -> Result<(), Error>
     loop {
         let controls: PinChanges = state_retriever.get_pins_expected_to_change(&control_nodes, &Local::now());
         if controls.len() > 0 {
-            info!("States expected to change: {}", controls.len());
+            info!("States expected to change: {}", controls.iter().map(|(n, m)| m.len()).sum::<usize>());
         }
 
         for (control_name, pins) in &controls {
