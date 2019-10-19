@@ -16,7 +16,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "arduino-mqtt-pin"
 version = "0.1.0"
-source = "git+https://github.com/songokas/rust-arduino-mqtt-pin?branch=heating#ce085fefc03300594f2eb6924e6345bde34fc779"
+source = "git+https://github.com/songokas/rust-arduino-mqtt-pin#ce085fefc03300594f2eb6924e6345bde34fc779"
 dependencies = [
  "arraydeque 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.9 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -120,9 +120,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "heating-control"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
- "arduino-mqtt-pin 0.1.0 (git+https://github.com/songokas/rust-arduino-mqtt-pin?branch=heating)",
+ "arduino-mqtt-pin 0.1.0 (git+https://github.com/songokas/rust-arduino-mqtt-pin)",
  "arraydeque 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.27.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -508,7 +508,7 @@ dependencies = [
 [metadata]
 "checksum aho-corasick 0.7.6 (registry+https://github.com/rust-lang/crates.io-index)" = "58fb5e95d83b38284460a5fda7d6470aa0b8844d283a0b614b8535e880800d2d"
 "checksum ansi_term 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)" = "23ac7c30002a5accbf7e8987d0632fa6de155b7c3d39d0067317a391e00a2ef6"
-"checksum arduino-mqtt-pin 0.1.0 (git+https://github.com/songokas/rust-arduino-mqtt-pin?branch=heating)" = "<none>"
+"checksum arduino-mqtt-pin 0.1.0 (git+https://github.com/songokas/rust-arduino-mqtt-pin)" = "<none>"
 "checksum arraydeque 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)" = "f0ffd3d69bd89910509a5d31d1f1353f38ccffdd116dd0099bbd6627f7bd8ad8"
 "checksum atty 0.2.13 (registry+https://github.com/rust-lang/crates.io-index)" = "1803c647a3ec87095e7ae7acfca019e98de5ec9a7d01343f611cf3152ed71a90"
 "checksum autocfg 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "b671c8fb71b457dd4ae18c4ba1e59aa81793daacc361d82fcd410cef0d491875"
