@@ -25,6 +25,7 @@ use chrono::{Local};
 #[path = "../config.rs"]
 pub mod config;
 #[path = "../helper.rs"]
+#[macro_use]
 pub mod helper;
 #[path = "../zone.rs"]
 pub mod zone;

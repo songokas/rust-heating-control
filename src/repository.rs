@@ -6,18 +6,6 @@ use std::sync::RwLock;
 
 pub type States = HashMap<String, HashMap<u8, PinCollection>>;
 
-macro_rules! map(
-    { $($key:expr => $value:expr),+ } => {
-        {
-            let mut m = ::std::collections::HashMap::new();
-            $(
-                m.insert($key, $value);
-            )+
-            m
-        }
-     };
-);
-
 #[derive(new)]
 pub struct PinStateRepository
 {
@@ -86,7 +74,7 @@ impl PinStateRepository
 
 
 #[cfg(test)]
-mod tests
+pub mod test_repository
 {
     use speculate::speculate;
     use super::*;
@@ -95,46 +83,73 @@ mod tests
     use crate::zone::{Zone, Interval};
     use crate::config::{ControlNode};
 
-    fn create_repository() -> PinStateRepository
+    pub fn create_repository() -> PinStateRepository
     {
         let pin_one_states = vec![
             PinState::new(1, PinValue::Analog(0), Local.ymd(2019, 8, 1).and_hms(8, 0, 0), None),
-            PinState::new(1, PinValue::Temperature(Temperature::new(20.5)), Local.ymd(2019, 8, 1).and_hms(8, 0, 0), None),
-            PinState::new(1, PinValue::Temperature(Temperature::new(22.5)), Local.ymd(2019, 8, 1).and_hms(8, 0, 0), None),
-            PinState::new(1, PinValue::Temperature(Temperature::new(22.5)), Local.ymd(2019, 8, 1).and_hms(8, 0, 0), None),
-            PinState::new(1, PinValue::Temperature(Temperature::new(21.5)), Local.ymd(2019, 8, 1).and_hms(8, 0, 0), None),
-            PinState::new(1, PinValue::Analog(255), Local.ymd(2019, 8, 1).and_hms(8, 0, 0), None),
+            PinState::new(1, PinValue::Analog(255), Local.ymd(2019, 8, 2).and_hms(8, 0, 0), None),
+        ];
+        let temperature_one_states = vec![
+            PinState::new(4, PinValue::Temperature(Temperature::new(18.5)), Local.ymd(2019, 8, 2).and_hms(7, 40, 0), None),
+            PinState::new(4, PinValue::Temperature(Temperature::new(17.0)), Local.ymd(2019, 8, 2).and_hms(8, 3, 0), None),
+            PinState::new(4, PinValue::Temperature(Temperature::new(18.5)), Local.ymd(2019, 8, 2).and_hms(8, 30, 0), None),
+            PinState::new(4, PinValue::Temperature(Temperature::new(19.5)), Local.ymd(2019, 8, 2).and_hms(8, 50, 0), None),
         ];
         let pin_two_states = vec![
             PinState::new(2, PinValue::Analog(122), Local.ymd(2019, 8, 1).and_hms(8, 0, 0), None),
-            PinState::new(2, PinValue::Analog(0), Local.ymd(2019, 8, 1).and_hms(8, 0, 0), None),
+            PinState::new(2, PinValue::Analog(0), Local.ymd(2019, 8, 1).and_hms(9, 0, 0), None),
+        ];
+        let temperature_two_states = vec![
+            PinState::new(4, PinValue::Temperature(Temperature::new(20.5)), Local.ymd(2019, 8, 1).and_hms(8, 50, 0), None),
         ];
         let pin_five_states = vec![
-            PinState::new(5, PinValue::Temperature(Temperature::new(22.5)), Local.ymd(2019, 8, 1).and_hms(8, 0, 0), None),
-            PinState::new(5, PinValue::Analog(0), Local.ymd(2019, 8, 1).and_hms(8, 0, 0), None),
+            PinState::new(5, PinValue::Analog(0), Local.ymd(2019, 8, 2).and_hms(8, 5, 0), None),
         ];
-        let states = map!{"main".to_owned() => map!{
-            1 => PinCollection::from_states(&pin_one_states),
-            2 => PinCollection::from_states(&pin_two_states),
-            5 => PinCollection::from_states(&pin_five_states)
-        }};
+        let temperature_five_states = vec![
+            PinState::new(4, PinValue::Temperature(Temperature::new(22.5)), Local.ymd(2019, 8, 2).and_hms(8, 0, 0), None),
+        ];
+        let pin_heater_states = vec![
+            PinState::new(34, PinValue::Digital(true), Local.ymd(2019, 8, 2).and_hms(8, 10, 0), None),
+        ];
+        let states = map!{
+            "main".to_owned() => map!{
+                1 => PinCollection::from_states(&pin_one_states),
+                2 => PinCollection::from_states(&pin_two_states),
+                5 => PinCollection::from_states(&pin_five_states),
+                34 => PinCollection::from_states(&pin_heater_states)
+            },
+            "zone1".to_owned() => map!{
+                4 => PinCollection::from_states(&temperature_one_states)
+            },
+            "zone2".to_owned() => map!{
+                4 => PinCollection::from_states(&temperature_two_states)
+            },
+            "zone4".to_owned() => map!{
+               4 => PinCollection::from_states(&temperature_five_states)
+            },
+            "zone5".to_owned() => map!{
+               4 => PinCollection::from_states(&temperature_five_states)
+            }
+        };
         PinStateRepository::new(RwLock::new(states))
     }
 
-    fn create_zone() -> Zone
+    pub fn create_zone(control_pin: u8) -> Zone
     {
         let intervals = vec![
             Interval::new(NaiveTime::from_hms(8, 0, 0), NaiveTime::from_hms(9, 0, 0), Temperature::new(20.0)),
-            Interval::new(NaiveTime::from_hms(23, 1, 0), NaiveTime::from_hms(23, 3, 3), Temperature::new(30.5))
+            Interval::new(NaiveTime::from_hms(23, 1, 0), NaiveTime::from_hms(23, 31, 0), Temperature::new(30.5))
         ];
-        Zone::new("zone1".to_owned(), 4, intervals, 1)
+        Zone::new(format!("zone{}", control_pin), 4, intervals, control_pin)
     }
 
-    fn create_nodes() -> ControlNodes
+    pub fn create_nodes() -> ControlNodes
     {
         let nodes = map!{"main".to_owned() => ControlNode::new(
-            "main".to_owned(), 1, map!{
-                "zone1".to_owned() => create_zone()
+            "main".to_owned(), 34, map!{
+                "zone1".to_owned() => create_zone(1),
+                "zone2".to_owned() => create_zone(2),
+                "zone4".to_owned() => create_zone(4)
             }
         )};
         nodes
@@ -178,16 +193,16 @@ mod tests
             it "should get average temperature"
             {
                 assert_eq!(
-                    repository.get_average_temperature("main", 1).expect("zone 1 temp"),
-                    Temperature::new(21.75)
+                    repository.get_average_temperature("zone1", 4).expect("zone 1 temp"),
+                    Temperature::new(18.375)
                 );
 
                 assert!(
-                    repository.get_average_temperature("main", 2).is_none()
+                    repository.get_average_temperature("main", 34).is_none()
                 );
 
                 assert_eq!(
-                    repository.get_average_temperature("main", 5).expect("zone 5 temp"),
+                    repository.get_average_temperature("zone4", 4).expect("zone 5 temp"),
                     Temperature::new(22.5)
                 );
 
@@ -197,7 +212,7 @@ mod tests
             {
                 let nodes = create_nodes();
                 let since = Local.ymd(2019, 8, 1).and_hms(7, 0, 0);
-                let expected = Local.ymd(2019, 8, 1).and_hms(8, 0, 0);
+                let expected = Local.ymd(2019, 8, 2).and_hms(8, 0, 0);
 
                 assert_eq!(
                     repository.get_first_zone_on_dt(&nodes, &since),

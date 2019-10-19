@@ -83,6 +83,7 @@ impl HeaterDecider<'_>
     pub fn should_be_on(&self, nodes: &ControlNodes, now: &DateTime<Local>) -> bool
     {
         if let Some(first_zone_on) = self.repository.get_first_zone_on_dt(nodes, &(*now - Duration::hours(24))) {
+            println!("{:?}", first_zone_on);
             return *now - first_zone_on > Duration::seconds(self.config.acctuator_warmup_time as i64);
         }
         false
@@ -96,10 +97,11 @@ impl HeaterDecider<'_>
 
 
 #[cfg(test)]
-mod tests {
-
+mod test_deciders
+{
     use super::*;
     use chrono::{TimeZone, NaiveTime};
+    use crate::repository::test_repository::{create_nodes, create_repository};
 
     fn create_zone() -> (Zone, Config)
     {
@@ -173,6 +175,34 @@ mod tests {
                         "test with {} {}", value, temp
                     );
                 }
+            }
+        }
+
+        describe "heater state"
+        {
+            before
+            {
+                let config = Config::new("test".to_owned(), "host".to_owned(), "main".to_owned(), 34);
+                let repository = create_repository();
+                let heater_decider = HeaterDecider::new(&repository, &config);
+            }
+
+            it "should be on"
+            {
+                let expected = Local.ymd(2019, 8, 2).and_hms(8, 0, 0);
+                let nodes = create_nodes();
+                assert!(heater_decider.should_be_on(&nodes, &Local.ymd(2019, 8, 3).and_hms(7, 0, 0)), "{:?}", nodes);
+                assert!(heater_decider.should_be_on(&nodes, &Local.ymd(2019, 8, 2).and_hms(8, 5, 1)), "{:?}", nodes);
+                assert!(!heater_decider.should_be_on(&nodes, &Local.ymd(2019, 8, 2).and_hms(8, 5, 0)), "{:?}", nodes);
+                assert!(!heater_decider.should_be_on(&nodes, &Local.ymd(2019, 8, 4).and_hms(7, 0, 0)), "{:?}", nodes);
+            }
+
+            it "can turn zones off"
+            {
+                let state = PinState::new(34, PinValue::Analog(0), Local.ymd(2019, 8, 1).and_hms(8, 0, 0), None);
+                assert!(!heater_decider.can_turn_zones_off(&state, &Local.ymd(2019, 8, 1).and_hms(8, 0, 0)));
+                assert!(!heater_decider.can_turn_zones_off(&state, &Local.ymd(2019, 8, 1).and_hms(8, 10, 0)));
+                assert!(heater_decider.can_turn_zones_off(&state, &Local.ymd(2019, 8, 1).and_hms(8, 10, 1)));
             }
         }
     }
