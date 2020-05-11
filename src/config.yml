@@ -1,29 +1,32 @@
-host: 192.168.0.140
+general:
+  host: 192.168.0.140
 
-name: sildymas
+  name: sildymas
 
-# how long it takes for acctuator to warm up in secs
-acctuator_warmup_time: 180
+  # how long it takes for acctuator to warm up in secs
+  acctuator_warmup_time: 180
 
-# how long it takes for pump to stop working in secs
-heater_pump_stop_time: 600
+  # how long it takes for pump to stop working in secs
+  heater_pump_stop_time: 600
 
-# ignore zone config and expect this temperature when enabled
-constant_temperature_expected: 18.0
+  # ignore zone config and expect this temperature when enabled
+  constant_temperature_expected: 18.0
 
-# min value for pwm pin in percent
-min_pwm_state: 30
+  # min value for pwm pin in percent
+  min_pwm_state: 30
 
-# if the temperature difference is less then min_temperature_diff_for_pwm use min_pwm_state
-min_temperature_diff_for_pwm: 0.5
+  # if the temperature difference is less then min_temperature_diff_for_pwm use min_pwm_state
+  min_temperature_diff_for_pwm: 0.5
 
-# when temperature reaches its expected value wait for it to drop temperature_drop_wait to turn acctuator back on
-temperature_drop_wait: 0.7
+  # when temperature reaches its expected value wait for it to drop temperature_drop_wait to turn acctuator back on
+  temperature_drop_wait: 0.7
+
+  heater_control_pin: 30
+  heater_control_name: main_control
 
 controls:
   main_control: 
-    path: sildymas/nodes/main
-    control_pin: 83
+    control_pin: 30
     zones:
       salionas:
         times:
@@ -69,7 +72,6 @@ controls:
         control_pin: 34
 
   slave_control:
-    path: sildymas/nodes/slave
     zones:
       miegamasis:
         times:

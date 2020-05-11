@@ -7,15 +7,48 @@ edition = "2018"
 [dependencies]
 json = "0.12.0"
 yaml-rust = "0.4.3"
-chrono = "0.4"
+#chrono = "0.4"
 mosquitto-client = "0.1.5"
 arraydeque = "0.4"
 clap = {version = "~2.27.0", features = ["yaml"]}
-arduino-mqtt-pin = { version = "~0.1", git = "https://github.com/songokas/rust-arduino-mqtt-pin" }
+arduino-mqtt-pin = { branch = "master", git = "https://github.com/songokas/rust-arduino-mqtt-pin" }
 log = "0.4.0"
 env_logger = "0.7.0"
-simulacrum = "0.3.0"
+#simulacrum = "0.3.0"
 derive-new = "0.5"
 spin = "0.5.2"
+
+#rocket_contrib = { version = "0.4.2", features = ["json"] }
+#config = "0.9.3"
+#getset = "0.0.8"
+derive-getters = "0.1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.8"
+serde_json = "1.0.41"
+
+rocket = "~0.4"
+bigdecimal = "0.1.0"
+#diesel-derive-enum = { version = "0.4", features = ["sqlite"] }
+#num-integer = "0.1.41"
+#num-traits = "0.2.8"
+diesel_migrations = "1.4.0"
+
+uuid = { version = "0.8", features = ["serde", "v4"] }
+
+[dependencies.diesel]
+version = "~1.4"
+features = ["sqlite", "chrono", "numeric"]
+
+[dependencies.rocket_contrib]
+version = "~0.4"
+default-features = false
+features = ["json"]
+
+[dependencies.chrono]
+version = "~0.4"
+features = ["serde"]
+
 [dev-dependencies]
-speculate = "0.1"
+speculate = "~0.1"
+vfs = "~0.2"
+

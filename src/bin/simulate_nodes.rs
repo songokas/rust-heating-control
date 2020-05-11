@@ -2,14 +2,9 @@
 #![allow(unused_variables)]
 
 #[macro_use]
-extern crate json;
-#[macro_use]
-extern crate log;
-#[macro_use]
-extern crate derive_new;
+extern crate diesel;
 
 use std::collections::{HashMap};
-
 use mosquitto_client::{Mosquitto};
 use std::io::{Error, ErrorKind};
 use std::time::Duration;
@@ -26,8 +21,10 @@ pub mod helper;
 pub mod zone;
 #[path = "../repository.rs"]
 pub mod repository;
+#[path = "../schema.rs"]
+pub mod schema;
 
-use crate::config::{load_config, ControlNodes};
+use crate::config::{load_config, ControlNodes, Settings};
 
 fn send_temperature(client: &Mosquitto, namespace: &str, name: &str, pin: u8, value: f32) -> bool
 {
@@ -36,7 +33,7 @@ fn send_temperature(client: &Mosquitto, namespace: &str, name: &str, pin: u8, va
         &topic,
         format!("{}", value).as_bytes(),
         1,
-        true
+        false
     );
 
     if let Err(v) = result {
@@ -55,7 +52,7 @@ fn send_pin(client: &Mosquitto, namespace: &str, name: &str, pin: u8, value: &u1
         &topic,
         format!("{}", value).as_bytes(),
         1,
-        true
+        false
     );
 
     if let Err(v) = result {
@@ -88,21 +85,22 @@ fn main() -> Result<(), Error>
     //env_logger::from_env(Env::default().default_filter_or("debug")).init();
     let (config, control_nodes) = load_config("src/config.yml", 0)?;
     env_logger::from_env(Env::default().default_filter_or("debug")).init();
+    let config = Settings::new(config);
 
     let client = Mosquitto::new("test1");//&format!("{}-simulate", config.name));
-    client.connect(&config.host, 1883)
-        .map_err(|e| Error::new(ErrorKind::NotConnected, format!("Unable to connect to host: {} {:?}", config.host, e)))?;
+    client.connect(&config.host(), 1883)
+        .map_err(|e| Error::new(ErrorKind::NotConnected, format!("Unable to connect to host: {} {:?}", config.host(), e)))?;
 
 
     for (node_name, control_node) in &control_nodes {
         for (zone_name, zone) in &control_node.zones {
-            let topic = format!("{main}/nodes/{name}/set/json", main=config.name, name=zone_name);
+            let topic = format!("{main}/nodes/{name}/set/json", main=config.name(), name=zone_name);
             client.subscribe(&topic, 0)
                 .map(|a| { info!("Listening to: {}", topic); a })
                 .map_err(|e| Error::new(ErrorKind::NotConnected, format!("Unable to subscribe: {} {}", zone_name, e)))?;
         }
 
-        let topic = format!("{main}/nodes/{name}/set/json", main=config.name, name=node_name);
+        let topic = format!("{main}/nodes/{name}/set/json", main=config.name(), name=node_name);
         client.subscribe(&topic, 0)
             .map(|a| { info!("Listening to: {}", topic); a })
             .map_err(|e| Error::new(ErrorKind::NotConnected, format!("Unable to subscribe: {} {:?}", node_name, e)))?;
@@ -119,9 +117,15 @@ fn main() -> Result<(), Error>
         states.borrow_mut().insert(format!("{}_{}", paths.pop().unwrap_or("none"), j["pin"].as_u8().unwrap()), j["set"].as_u16().unwrap());
     });
 
+    let mut count = 0;
+    let max_temp = 22.0;
+    let min_temp = 19.0;
+    let mut temperature = 19.0;
+    let mut increasing = true;
     loop {
 
-        send_zones(&client, &config.name, &control_nodes, &states.borrow(), 16.0);
+
+        send_zones(&client, &config.name(), &control_nodes, &states.borrow(), temperature);
 
         println!("{:?}", states.borrow());
 
@@ -135,6 +139,22 @@ fn main() -> Result<(), Error>
             }
             thread::sleep(Duration::from_millis(500));
         }
+
+        count += 1;
+
+        if count % 50 == 0 {
+            if temperature >= max_temp {
+                increasing = false;
+            } else if temperature <= min_temp {
+                increasing = true;
+            }
+            if increasing {
+                temperature += 1.0;
+            } else {
+                temperature -= 1.0;
+            }
+        }
+
     }
 
 }

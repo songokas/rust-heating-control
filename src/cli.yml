@@ -9,6 +9,12 @@ args:
         value_name: FILE
         help: "a custom config file (default: config.yml)"
         takes_value: true
+    - db:
+          short: d
+          long: db
+          value_name: FILE
+          help: "sql db file (default: pins.sqlite3)"
+          takes_value: true
     - verbose:
         short: v
         long: verbose

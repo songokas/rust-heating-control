@@ -1,0 +1,23 @@
+name: heating-control-server
+version: "1.0.0"
+author: Tomas Jakstas <tom.jakstas@gmail.com>
+about: heating control server
+args:
+    - config:
+        short: c
+        long: config
+        value_name: FILE
+        help: "config file to modify"
+        takes_value: true
+    - db:
+        short: d
+        long: db
+        value_name: FILE
+        help: "sql db file (default: pins.sqlite3)"
+        takes_value: true
+    - html:
+        short: h
+        long: html
+        value_name: FILE
+        help: "html file to serve"
+        takes_value: true

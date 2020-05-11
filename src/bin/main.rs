@@ -1,13 +1,9 @@
 #![allow(unused_variables)]
 
 #[macro_use]
-extern crate json;
+extern crate diesel;
 #[macro_use]
-extern crate clap;
-#[macro_use]
-extern crate log;
-#[macro_use]
-extern crate derive_new;
+extern crate diesel_migrations;
 
 #[cfg(test)]
 #[macro_use]
@@ -17,9 +13,9 @@ use mosquitto_client::{Mosquitto};
 use std::io::{Error, ErrorKind};
 use std::time::Duration;
 use std::thread;
-use clap::{App};
+use clap::{App, load_yaml};
 use env_logger::Env;
-use log::{warn};
+use log::{warn,info};
 use chrono::{Local};
 
 #[path = "../config.rs"]
@@ -35,38 +31,50 @@ pub mod repository;
 pub mod deciders;
 #[path = "../state_retriever.rs"]
 pub mod state_retriever;
+#[path = "../schema.rs"]
+pub mod schema;
 
-use crate::config::{load_config};
+use crate::config::{load_config, has_config_changed, Settings};
 use crate::helper::{print_info, send_to_zone};
 use crate::deciders::{ZoneStateDecider, TemperatureStateDecider, HeaterDecider};
 use crate::state_retriever::{StateRetriever, PinChanges};
-use crate::repository::{States, PinStateRepository};
+use crate::repository::{PinStateRepository};
 use arduino_mqtt_pin::pin::{PinOperation};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
+use diesel::{SqliteConnection, Connection};
+
+embed_migrations!("migrations");
+
 
 fn main() -> Result<(), Error>
 {
-
     let yaml = load_yaml!("../cli.yml");
     let matches = App::from_yaml(yaml).get_matches();
-    let config_path = matches.value_of("config").unwrap_or("config.conf");
     let verbosity: u8 = matches.occurrences_of("verbose") as u8;
+    let config_path = matches.value_of("config").unwrap_or("config.conf");
+    let db_path = matches.value_of("db").unwrap_or("pins.sqlite3");
 
     env_logger::from_env(Env::default().default_filter_or(match verbosity { 1 => "debug", 2 => "trace", _ => "info"})).init();
 
+    let connection = SqliteConnection::establish(db_path)
+        .map_err(|e| Error::new(ErrorKind::NotConnected, format!("Unable to connect to db: {:?}", e)))?;
+    embedded_migrations::run(&connection)
+        .map_err(|e| Error::new(ErrorKind::NotConnected, format!("Unable to run migrations: {:?}", e)))?;
+
     info!("Using config path: {}", config_path);
 
-    let (config, control_nodes) = load_config(config_path, verbosity)?;
+    let (conf_temp, mut control_nodes) = load_config(config_path, verbosity)?;
+    let config = Settings::new(conf_temp);
 
-    let repository = Arc::new(PinStateRepository::new(RwLock::new(States::new())));
+    let repository = Arc::new(PinStateRepository::new(&connection));
     let temperature_decider = TemperatureStateDecider::new(&config);
     let zone_decider = ZoneStateDecider::new(&temperature_decider, &config);
     let heater_decider = HeaterDecider::new(&repository, &config);
     let state_retriever = StateRetriever::new(&repository, &heater_decider, &zone_decider, &config);
 
-    let client = Mosquitto::new(&format!("{}-main", config.name));
-    client.connect(&config.host, 1883)
-        .map_err(|e| Error::new(ErrorKind::NotConnected, format!("Unable to connect to host: {} {}", config.host, e)))?;
+    let client = Mosquitto::new(&format!("{}-main", config.name()));
+    client.connect(&config.host(), 1883)
+        .map_err(|e| Error::new(ErrorKind::NotConnected, format!("Unable to connect to host: {} {}", config.host(), e)))?;
 
     /*
      * receive remote on :
@@ -74,8 +82,8 @@ fn main() -> Result<(), Error>
      * receive local on:
      * prefix/master/analog/timeout/3
      */
-    let remote_set = format!("{}/nodes/+/current/#", config.name);
-    let local_set = format!("{}/master/#", config.name);
+    let remote_set = format!("{}/nodes/+/current/#", config.name());
+    let local_set = format!("{}/master/#", config.name());
 
     let remote_channel = client.subscribe(&remote_set, 0)
         .map(|a| { info!("Listening to: {}", remote_set); a })
@@ -89,24 +97,22 @@ fn main() -> Result<(), Error>
     let mrepository = Arc::clone(&repository);
     m.on_message(move |_,msg| {
 
-        //debug!("Message received: {:?} {}", msg, msg.text());
-//        if msg.topic().ends_with("/config/json") {
-//            return;
-//        }
-
-        let op = PinOperation::from_message(&msg);
-        if !op.is_ok() {
-            warn!("Failed to parse message {:?}", msg);
-            warn!("{}", op.err().unwrap_or("Failed to see error"));
-            return;
+        match PinOperation::from_message(&msg) {
+            Ok(o) => mrepository.save_state(&o),
+            Err(e) => {
+                warn!("Failed to parse message {:?}", msg);
+                warn!("{}", e);
+            }
         }
-        let op = op.unwrap();
-
-        mrepository.save_state(&op);
-        //add_state(&mut states.borrow_mut(), &op);
     });
 
     loop {
+        if has_config_changed(config_path, config.version()) {
+            let (new_config, nodes) = load_config(config_path, verbosity)?;
+            control_nodes = nodes;
+            config.replace(new_config);
+        }
+
         let controls: PinChanges = state_retriever.get_pins_expected_to_change(&control_nodes, &Local::now());
         if controls.len() > 0 {
             info!("States expected to change: {}", controls.iter().map(|(n, m)| m.len()).sum::<usize>());
@@ -114,7 +120,7 @@ fn main() -> Result<(), Error>
 
         for (control_name, pins) in &controls {
             for (pin, value) in pins {
-                send_to_zone(&client, *pin, value.as_u16(), &config.name, control_name);
+                send_to_zone(&client, *pin, value.as_u16(), &config.name(), control_name);
             }
         }
 

@@ -1,7 +1,7 @@
 # Control heating system with mqtt messages
 
 * arduino/esp clients sends messages with their pin statuses/readings
-* system reacts according to configuration by sending messages to control nodes
+* system reacts according to configuration by sending messages to the control nodes
 
 ## Dependencies
 
@@ -10,10 +10,9 @@
 
 ## How it works
 
-* based on config.yml system reacts/sends mqtt messages to the main controller e.g "heating/nodes/master/set/json" {"pin": 3, "set": 1}
-* controller reacts by turning those pins on/off
-* controller sends messages with the pin/sensor values "heating/nodes/bedroom/current/temperature/3" "20.5"
-* system controls
+* arduino sends pin statuses to this application e.g. "heating/nodes/bedroom/current/temperature/3" 20.52, "heating/nodes/main-control/current/analog/32" 300 
+* this application reacts/sends mqtt messages using configuration e.g "heating/nodes/master/set/json" {"pin": 3, "set": 1}
+* arduino reacts by turning those pins on/off
 
 ## Howto run
 
@@ -27,7 +26,7 @@ cargo build --release
 
 ```
 
-## Make it pernament
+## Make it permanent
 
 ### systemctl
 

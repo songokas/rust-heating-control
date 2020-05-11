@@ -1,15 +1,16 @@
 use chrono::{DateTime, Local, Duration};
 use arduino_mqtt_pin::pin::{PinState, PinValue, Temperature};
-use crate::config::{ControlNodes, Config};
+use crate::config::{ControlNodes, Settings};
 use crate::repository::PinStateRepository;
 use arduino_mqtt_pin::helper::percent_to_analog;
 use crate::zone::{Zone};
+use derive_new::{new};
 
 #[derive(new)]
 pub struct ZoneStateDecider<'a>
 {
     temp_decider: &'a TemperatureStateDecider<'a>,
-    config: &'a Config
+    config: &'a Settings
 }
 
 impl ZoneStateDecider<'_>
@@ -21,7 +22,7 @@ impl ZoneStateDecider<'_>
             if last_state.is_on() {
                 *current_temperature < expected_temperature
             } else {
-                *current_temperature < expected_temperature - Temperature::new(self.config.temperature_drop_wait)
+                *current_temperature < expected_temperature - Temperature::new(self.config.temperature_drop_wait())
             }
         } else {
             false
@@ -44,24 +45,23 @@ impl ZoneStateDecider<'_>
 #[derive(new)]
 pub struct TemperatureStateDecider<'a>
 {
-    config: &'a Config
+    config: &'a Settings
 }
 
 impl TemperatureStateDecider<'_>
 {
     pub fn get_expected_value(&self, current_temperature: &Temperature, zone: &Zone, now: &DateTime<Local>) -> PinValue
     {
-        let expected_temperature = zone.get_expected_temperature(&now.time());
-        if expected_temperature.is_none() {
-            return PinValue::Analog(0);
-        }
-        let expected_temperature = expected_temperature.unwrap();
+        let expected_temperature = match zone.get_expected_temperature(&now.time()) {
+            Some(t) => t,
+            _ => return PinValue::Analog(0)
+        };
         if *current_temperature >= expected_temperature {
             return PinValue::Analog(0);
         }
         let diff = (expected_temperature - current_temperature.clone()).abs();
-        let value = if diff <= Temperature::new(self.config.min_temperature_diff_for_pwm) {
-            percent_to_analog(self.config.min_pwm_state)
+        let value = if diff <= Temperature::new(self.config.min_temperature_diff_for_pwm()) {
+            percent_to_analog(self.config.min_pwm_state())
         } else if diff < Temperature::new(1f32) {
             percent_to_analog((diff.value * 100f32) as u8)
         } else {
@@ -74,8 +74,8 @@ impl TemperatureStateDecider<'_>
 #[derive(new)]
 pub struct HeaterDecider<'a>
 {
-    repository: &'a PinStateRepository,
-    config: &'a Config
+    repository: &'a PinStateRepository<'a>,
+    config: &'a Settings
 }
 
 impl HeaterDecider<'_>
@@ -83,14 +83,14 @@ impl HeaterDecider<'_>
     pub fn should_be_on(&self, nodes: &ControlNodes, now: &DateTime<Local>) -> bool
     {
         if let Some(first_zone_on) = self.repository.get_first_zone_on_dt(nodes, &(*now - Duration::hours(24))) {
-            return *now - first_zone_on > Duration::seconds(self.config.acctuator_warmup_time as i64);
+            return *now - first_zone_on > Duration::seconds(self.config.acctuator_warmup_time() as i64);
         }
         false
     }
 
     pub fn can_turn_zones_off(&self, state: &PinState, now: &DateTime<Local>) -> bool
     {
-        !state.is_on() && *now - state.dt > Duration::seconds(self.config.heater_pump_stop_time as i64)
+        !state.is_on() && *now - state.dt > Duration::seconds(self.config.heater_pump_stop_time() as i64)
     }
 }
 
@@ -102,10 +102,13 @@ mod test_deciders
     use chrono::{TimeZone, NaiveTime};
     use crate::repository::test_repository::{create_nodes, create_repository};
     use crate::zone::{Interval};
+    use crate::config::{Config};
+    use diesel::{SqliteConnection, Connection};
+    use crate::embedded_migrations;
 
-    fn create_zone() -> (Zone, Config)
+    fn create_zone() -> (Zone, Settings)
     {
-        let config = Config::new(String::from("test"), String::from("host"), String::from("main"), 3);
+        let config = Settings::new(Config::new(String::from("test"), String::from("host"), String::from("main"), 3));
         let intervals = vec![
             Interval::new(NaiveTime::from_hms(8, 0, 0), NaiveTime::from_hms(9, 0, 0), Temperature::new(20.0)),
             Interval::new(NaiveTime::from_hms(23, 1, 0), NaiveTime::from_hms(23, 3, 3), Temperature::new(30.5))
@@ -182,8 +185,10 @@ mod test_deciders
         {
             before
             {
-                let config = Config::new("test".to_owned(), "host".to_owned(), "main".to_owned(), 34);
-                let repository = create_repository();
+                let connection = SqliteConnection::establish(":memory:").unwrap();
+                embedded_migrations::run(&connection);
+                let config = Settings::new(Config::new("test".to_owned(), "host".to_owned(), "main".to_owned(), 34));
+                let repository = create_repository(&connection);
                 let heater_decider = HeaterDecider::new(&repository, &config);
             }
 

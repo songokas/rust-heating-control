@@ -1,144 +1,245 @@
 use std::collections::HashMap;
-use yaml_rust::{Yaml, YamlLoader};
-use log::{error};
+use log::{error, debug};
+use std::time::{UNIX_EPOCH};
 
 use crate::zone::Zone;
-use std::fs::File;
-use std::io::{Error, ErrorKind, Read};
+use std::fs::{metadata, File};
+use std::io::{Error, ErrorKind, BufReader};
+use std::cell::{RefCell};
+use serde::{Serialize, Deserialize};
+use derive_new::{new};
 
 pub type ControlNodes = HashMap<String, ControlNode>;
 pub type Zones = HashMap<String, Zone>;
 
-#[derive(Debug, new)]
+#[derive(Serialize, Deserialize)]
+pub struct FullConfig
+{
+    pub general: Config,
+    pub controls: ControlNodes
+}
+
+#[derive(Debug, new, Serialize, Deserialize)]
 pub struct ControlNode
 {
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
     pub control_pin: u8,
     pub zones: Zones
 }
 
-#[derive(Debug, new)]
+#[derive(Debug)]
+pub struct Settings
+{
+    config: RefCell<Config>
+}
+
+impl Settings
+{
+    pub fn new(config: Config) -> Settings
+    {
+        Settings { config: RefCell::new(config) }
+    }
+
+    pub fn replace(&self, config: Config)
+    {
+        self.config.replace(config);
+    }
+
+    pub fn name(&self) -> String
+    {
+       self.config.borrow().name.clone()
+    }
+
+    pub fn host(&self) -> String
+    {
+        self.config.borrow().host.clone()
+    }
+
+    pub fn heater_control_name(&self) -> String
+    {
+        self.config.borrow().heater_control_name.clone()
+    }
+
+    pub fn heater_control_pin(&self) -> u8
+    {
+        self.config.borrow().heater_control_pin
+    }
+
+    pub fn acctuator_warmup_time(&self) -> u16
+    {
+        self.config.borrow().acctuator_warmup_time
+    }
+
+    pub fn heater_pump_stop_time(&self) -> u16
+    {
+        self.config.borrow().heater_pump_stop_time
+    }
+
+    pub fn constant_temperature_expected(&self) -> f32
+    {
+        self.config.borrow().constant_temperature_expected
+    }
+
+    pub fn min_pwm_state(&self) -> u8
+    {
+        self.config.borrow().min_pwm_state
+    }
+
+    pub fn min_temperature_diff_for_pwm(&self) -> f32
+    {
+        self.config.borrow().min_temperature_diff_for_pwm
+    }
+
+    pub fn temperature_drop_wait(&self) -> f32
+    {
+        self.config.borrow().temperature_drop_wait
+    }
+
+    pub fn version(&self) -> u64
+    {
+        self.config.borrow().version
+    }
+}
+
+
+#[derive(Debug, new, Serialize, Deserialize, Clone)]
 pub struct Config
 {
-    pub name: String,
-    pub host: String,
-    pub heater_control_name: String,
-    pub heater_control_pin: u8,
+    name: String,
+    host: String,
+    heater_control_name: String,
+    heater_control_pin: u8,
     #[new(value = "300")]
-    pub acctuator_warmup_time: u16,
+    acctuator_warmup_time: u16,
     #[new(value = "600")]
-    pub heater_pump_stop_time: u16,
+    heater_pump_stop_time: u16,
     #[new(value = "20.0")]
-    pub constant_temperature_expected: f32,
+    constant_temperature_expected: f32,
     #[new(value = "30")]
-    pub min_pwm_state: u8,
+    min_pwm_state: u8,
     #[new(value = "0.3")]
-    pub min_temperature_diff_for_pwm: f32,
+    min_temperature_diff_for_pwm: f32,
     #[new(value = "0.7")]
-    pub temperature_drop_wait: f32,
-}
-
-impl Config
-{
-    pub fn from_yaml(yaml: &Yaml) -> Result<Config, String>
-    {
-        let name = yaml["name"].as_str().ok_or("yaml missing name")?;
-        let host = yaml["host"].as_str().ok_or("yaml missing host")?;
-        let acctuator_warmup_time = yaml["acctuator_warmup_time"].as_i64().ok_or("yaml missing acctuator_warmup_time")? as u16;
-        let heater_pump_stop_time = yaml["heater_pump_stop_time"].as_i64().ok_or("yaml missing heater_pump_stop_time")? as u16;
-        let constant_temperature_expected = yaml["constant_temperature_expected"].as_f64().ok_or("yaml missing constant_temperature_expected")? as f32;
-        let min_pwm_state = yaml["min_pwm_state"].as_i64().ok_or("ymal missing min_pwm_state")? as u8;
-        let min_temperature_diff_for_pwm = yaml["min_temperature_diff_for_pwm"].as_f64().ok_or("yaml missing min_temperature_diff_for_pwm")? as f32;
-        let temperature_drop_wait = yaml["temperature_drop_wait"].as_f64().ok_or("yaml missing temperature_drop_wait")? as f32;
-        let (heater_control_name, heater_control_pin) =  Config::get_control_names(yaml)?;
-
-        Ok(Config {
-            name: name.to_string(),
-            host: host.to_string(),
-            acctuator_warmup_time,
-            heater_pump_stop_time,
-            constant_temperature_expected,
-            min_pwm_state,
-            min_temperature_diff_for_pwm,
-            temperature_drop_wait,
-            heater_control_name,
-            heater_control_pin
-        })
-    }
-
-    fn get_control_names(yaml: &Yaml) -> Result<(String, u8), String>
-    {
-        let controls = yaml["controls"].as_hash();
-        if !controls.is_some() {
-            return Err("Failed to parse controls".to_string())
-        }
-        for (key, node) in controls.unwrap() {
-            if !key.as_str().is_some() {
-                continue;
-            }
-            let name = key.as_str().unwrap();
-            let control_pin = node["control_pin"].as_i64().unwrap_or(0) as u8;
-            if control_pin > 0 {
-                return Ok((name.to_string(), control_pin));
-            }
-        }
-        Err("Main control not found".to_string())
-    }
-
-
-}
-
-pub fn create_nodes(yaml: &Yaml) -> Result<ControlNodes, String>
-{
-    let mut control_nodes = ControlNodes::new();
-    let controls = yaml["controls"].as_hash();
-    if !controls.is_some() {
-       return Err("Failed to parse controls".to_string())
-    }
-    for (key, node) in controls.unwrap() {
-        if !key.as_str().is_some() {
-            continue;
-        }
-
-        let yaml_zones = node["zones"].as_hash();
-        if !yaml_zones.is_some() {
-            return Err("Failed to parse zones".to_string())
-        }
-
-        let mut zones: HashMap<String, Zone> = HashMap::new();
-        for (zone_name, zone) in yaml_zones.unwrap() {
-            if !zone_name.as_str().is_some() {
-                continue;
-            }
-            let z = Zone::from_yaml(zone_name.as_str().unwrap(), zone)?;
-            zones.insert(z.name.clone(), z);
-        }
-        let name = key.as_str().unwrap();
-        let control_pin = node["control_pin"].as_i64().unwrap_or(0) as u8;
-
-        control_nodes.insert(name.to_string(), ControlNode {name: name.to_string(), control_pin, zones});
-    }
-    return Ok(control_nodes);
+    temperature_drop_wait: f32,
+    #[new(value = "0")]
+    #[serde(default)]
+    version: u64
 }
 
 pub fn load_config(config_path: &str, verbosity: u8) -> Result<(Config, ControlNodes), Error>
 {
-    let mut yaml_file = File::open(config_path)?;
-    let mut contents = String::new();
-    yaml_file.read_to_string(&mut contents)?;
 
-    debug!("Config loaded: {} Verbosity: {}", config_path, verbosity);
-
-    let yaml_config = YamlLoader::load_from_str(&contents)
+    let yaml_file = File::open(&config_path)
+        .map_err(|err| error!("{:?}", err))
+        .map_err(|_| Error::new(ErrorKind::InvalidData, "Unable to open yaml file"))?;
+    let reader = BufReader::new(yaml_file);
+    let mut full_config: FullConfig = serde_yaml::from_reader(reader)
         .map_err(|err| error!("{:?}", err))
         .map_err(|_| Error::new(ErrorKind::InvalidData, "Unable to parse yaml file"))?;
 
-    let config = Config::from_yaml(&yaml_config[0])
-        .map_err(|s| { error!("{}", s); s })
-        .map_err(|err| Error::new(ErrorKind::InvalidData, "Unable to parse config section"))?;
+    debug!("Config loaded: {} Verbosity: {}", config_path, verbosity);
 
-    let control_nodes = create_nodes(&yaml_config[0])
-        .map_err(|s| { println!("{}", s); s })
-        .map_err(|_| Error::new(ErrorKind::InvalidData, "Unable to create control configuration"))?;
-    Ok((config, control_nodes))
+    let version =  metadata(config_path)
+        .and_then(|meta| meta.modified())
+        .map(|stime| if let Ok(dur) = stime.duration_since(UNIX_EPOCH) { dur.as_secs() } else { 0 })
+        .unwrap_or(0);
+    if full_config.general.version != version {
+        full_config.general.version = version;
+    }
+    Ok((full_config.general, full_config.controls))
+}
+
+pub fn has_config_changed(config_path: &str, version: u64) -> bool
+{
+    if let Ok(meta) = metadata(config_path) {
+        if let Ok(stime) = meta.modified() {
+            if let Ok(dur) = stime.duration_since(UNIX_EPOCH) {
+                return version < dur.as_secs();
+            }
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests
+{
+
+    use speculate::speculate;
+    use super::*;
+    use serde_yaml;
+    use serde_json;
+
+    speculate! {
+        describe "config serialization"
+        {
+            it "should serialize full config"
+            {
+                let contents = "
+general:
+  host: 192.168.0.140
+
+  name: sildymas
+
+  # how long it takes for acctuator to warm up in secs
+  acctuator_warmup_time: 180
+
+  # how long it takes for pump to stop working in secs
+  heater_pump_stop_time: 600
+
+  # ignore zone config and expect this temperature when enabled
+  constant_temperature_expected: 18.0
+
+  # min value for pwm pin in percent
+  min_pwm_state: 30
+
+  # if the temperature difference is less then min_temperature_diff_for_pwm use min_pwm_state
+  min_temperature_diff_for_pwm: 0.5
+
+  # when temperature reaches its expected value wait for it to drop temperature_drop_wait to turn acctuator back on
+  temperature_drop_wait: 0.7
+  heater_control_name: main_control
+  heater_control_pin: 83
+
+controls:
+  main_control:
+    path: sildymas/nodes/main
+    control_pin: 83
+    zones:
+      salionas:
+        times:
+          - start: 4:00
+            end: 21:00
+            expected_temperature: 21.0
+          - start: 4:00
+            end: 21:00
+            expected_temperature: 21.0
+        sensor_pin: 2
+        control_pin: 4
+
+  slave_control:
+    path: sildymas/nodes/slave
+    zones:
+      miegamasis:
+        times:
+          - start: 2:00
+            end: 23:00
+            expected_temperature: 20.5
+        control_pin: 10
+        sensor_pin: 2
+      vaiku:
+        times:
+          - start: 2:00
+            end: 23:00
+            expected_temperature: 20.5
+        control_pin: 9
+        sensor_pin: 2
+                ";
+                let config: FullConfig = serde_yaml::from_str(&contents).unwrap();
+                let json = serde_json::to_string(&config).unwrap();
+            }
+        }
+    }
 }

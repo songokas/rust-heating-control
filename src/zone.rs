@@ -1,21 +1,59 @@
 use chrono::{NaiveTime};
 use std::vec::Vec;
 use yaml_rust::{Yaml};
-
+use serde::{Serialize, Deserialize};
+use derive_new::{new};
 use arduino_mqtt_pin::pin::Temperature;
 
-#[derive(Debug, new)]
+#[derive(Debug, new, Serialize, Deserialize)]
 pub struct Interval
 {
+    #[serde(with = "serde_naive_time")]
     start: NaiveTime,
+    #[serde(with = "serde_naive_time")]
     end: NaiveTime,
+    #[serde(with = "serde_temperature")]
     expected_temperature: Temperature
 }
 
-#[derive(Debug, new)]
+mod serde_temperature {
+    use super::*;
+    use serde::{Serializer, Deserializer};
+
+    pub fn serialize<S: Serializer>(x: &Temperature, s: S) -> Result<S::Ok, S::Error>
+    {
+        s.serialize_f32(x.value)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Temperature, D::Error>
+    {
+        let temp: f32 = Deserialize::deserialize(deserializer)?;
+        Ok(Temperature::new(temp))
+//        let temp: String = Deserialize::deserialize(deserializer)?;
+//        Ok(Temperature::from_str(&temp).map_err(|e| D::Error::custom(e))?)
+    }
+}
+
+mod serde_naive_time {
+    use super::*;
+    use serde::{Serializer, Deserializer, de::Error};
+
+    pub fn serialize<S: Serializer>(time: &NaiveTime, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&format!("{}", time.format("%H:%M")))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<NaiveTime, D::Error> {
+        let time: String = Deserialize::deserialize(deserializer)?;
+        Ok(NaiveTime::parse_from_str(&time, "%H:%M").map_err(|_| D::Error::custom("failed to parse naive time"))?)
+    }
+}
+
+#[derive(Debug, new, Serialize, Deserialize)]
 pub struct Zone
 {
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
     pub sensor_pin: u8,
     times: Vec<Interval>,
     pub control_pin: u8
